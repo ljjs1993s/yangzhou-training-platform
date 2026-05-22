@@ -1,0 +1,31 @@
+# Node 依赖（容器内重新安装）
+node_modules/
+
+# 打包产物（不需要）
+dist/
+
+# IDE / 编辑器
+.workbuddy/
+.vscode/
+.idea/
+
+# 日志
+*.log
+
+# Git
+.git/
+.gitignore
+
+# 上传文件（容器启动时创建，卷挂载覆盖）
+uploads/
+
+# 临时文件
+*.tmp
+*.temp
+
+# 安装包
+*.zip
+
+# 平台文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+uploads/
+.workbuddy/
+*.log
+*.zip
+*.tmp
+.DS_Store
+Thumbs.db
