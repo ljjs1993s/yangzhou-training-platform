@@ -56,7 +56,7 @@ echo -e "${GREEN}依赖安装完成${NC}"
 
 # --- 4. 构建镜像 ---
 echo -e "${YELLOW}[4/6] 构建 Docker 镜像...${NC}"
-docker build -t ${IMAGE_NAME}:latest .
+docker build -f Dockerfile.sealos -t ${IMAGE_NAME}:latest .
 echo -e "${GREEN}镜像构建完成${NC}"
 docker images | grep ${IMAGE_NAME}
 

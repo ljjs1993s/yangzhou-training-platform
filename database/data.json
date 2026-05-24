@@ -1708,7 +1708,7 @@
     },
     {
       "key": "learning_mode",
-      "value": "course"
+      "value": "class"
     },
     {
       "key": "home_course_count",
@@ -1768,11 +1768,11 @@
     },
     {
       "key": "watermark_color",
-      "value": "#ffffff"
+      "value": "#e82121"
     },
     {
       "key": "watermark_opacity",
-      "value": "0.29"
+      "value": "0.13"
     },
     {
       "key": "external_system_url",
