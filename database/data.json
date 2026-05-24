@@ -414,7 +414,8 @@
       ],
       "materials": [],
       "trailer": "/uploads/1779443138758-fhwf8e.mp4",
-      "preview": "/uploads/1779443114510-vnas49.mp4"
+      "preview": "/uploads/1779443114510-vnas49.mp4",
+      "course_type_id": 1
     },
     {
       "id": 2,
@@ -440,7 +441,8 @@
       ],
       "materials": [],
       "trailer": "",
-      "preview": ""
+      "preview": "",
+      "course_type_id": 1
     },
     {
       "id": 3,
@@ -454,7 +456,10 @@
       "description": "大数据生态系统与处理技术",
       "status": "published",
       "sort_order": 3,
-      "created_at": "2025-01-15 00:00:00"
+      "created_at": "2025-01-15 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 4,
@@ -468,7 +473,10 @@
       "description": "机械设计原理与工程应用",
       "status": "published",
       "sort_order": 4,
-      "created_at": "2025-02-01 00:00:00"
+      "created_at": "2025-02-01 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 5,
@@ -482,7 +490,10 @@
       "description": "电气控制原理与PLC应用",
       "status": "published",
       "sort_order": 5,
-      "created_at": "2025-02-05 00:00:00"
+      "created_at": "2025-02-05 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 6,
@@ -496,7 +507,10 @@
       "description": "建筑力学基本原理与计算方法",
       "status": "published",
       "sort_order": 6,
-      "created_at": "2025-02-10 00:00:00"
+      "created_at": "2025-02-10 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 7,
@@ -510,7 +524,10 @@
       "description": "土木工程基础知识导论",
       "status": "published",
       "sort_order": 7,
-      "created_at": "2025-02-15 00:00:00"
+      "created_at": "2025-02-15 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 8,
@@ -524,7 +541,10 @@
       "description": "实用英语翻译方法与技巧",
       "status": "published",
       "sort_order": 8,
-      "created_at": "2025-03-01 00:00:00"
+      "created_at": "2025-03-01 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 9,
@@ -538,7 +558,10 @@
       "description": "企业财务管理与实务操作",
       "status": "published",
       "sort_order": 9,
-      "created_at": "2025-03-05 00:00:00"
+      "created_at": "2025-03-05 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 10,
@@ -552,7 +575,10 @@
       "description": "现代市场营销理论与实践",
       "status": "published",
       "sort_order": 10,
-      "created_at": "2025-03-10 00:00:00"
+      "created_at": "2025-03-10 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 11,
@@ -566,7 +592,10 @@
       "description": "计算机基础知识与Office应用",
       "status": "published",
       "sort_order": 11,
-      "created_at": "2025-03-15 00:00:00"
+      "created_at": "2025-03-15 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 12,
@@ -580,7 +609,10 @@
       "description": "高等数学微积分与线性代数",
       "status": "published",
       "sort_order": 12,
-      "created_at": "2025-03-20 00:00:00"
+      "created_at": "2025-03-20 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 13,
@@ -594,7 +626,10 @@
       "description": "大学英语综合能力提升",
       "status": "published",
       "sort_order": 13,
-      "created_at": "2025-04-01 00:00:00"
+      "created_at": "2025-04-01 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 14,
@@ -608,7 +643,10 @@
       "description": "思想政治理论教育",
       "status": "published",
       "sort_order": 14,
-      "created_at": "2025-04-05 00:00:00"
+      "created_at": "2025-04-05 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 15,
@@ -622,7 +660,10 @@
       "description": "创新创业思维与实践",
       "status": "published",
       "sort_order": 15,
-      "created_at": "2025-04-10 00:00:00"
+      "created_at": "2025-04-10 00:00:00",
+      "course_type_id": 1,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 16,
@@ -636,7 +677,10 @@
       "description": "AI/大数据/云计算技术前沿分享",
       "status": "published",
       "sort_order": 16,
-      "created_at": "2025-04-15 00:00:00"
+      "created_at": "2025-04-15 00:00:00",
+      "course_type_id": 2,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 17,
@@ -650,7 +694,10 @@
       "description": "行业专家实战经验分享",
       "status": "published",
       "sort_order": 17,
-      "created_at": "2025-04-20 00:00:00"
+      "created_at": "2025-04-20 00:00:00",
+      "course_type_id": 2,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 18,
@@ -664,7 +711,10 @@
       "description": "安全生产教育专题讲座",
       "status": "published",
       "sort_order": 18,
-      "created_at": "2025-04-25 00:00:00"
+      "created_at": "2025-04-25 00:00:00",
+      "course_type_id": 2,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 19,
@@ -678,7 +728,10 @@
       "description": "线下实践技能操作培训",
       "status": "published",
       "sort_order": 19,
-      "created_at": "2025-05-01 00:00:00"
+      "created_at": "2025-05-01 00:00:00",
+      "course_type_id": 3,
+      "trailer": "",
+      "preview": ""
     },
     {
       "id": 20,
@@ -692,7 +745,10 @@
       "description": "团队协作与沟通能力实训",
       "status": "published",
       "sort_order": 20,
-      "created_at": "2025-05-05 00:00:00"
+      "created_at": "2025-05-05 00:00:00",
+      "course_type_id": 3,
+      "trailer": "",
+      "preview": ""
     }
   ],
   "orders": [
@@ -839,6 +895,181 @@
       "status": "paid",
       "pay_method": "wechat",
       "created_at": "2026-05-22 09:47:50"
+    },
+    {
+      "id": 18,
+      "user_id": 1,
+      "course_id": 4,
+      "amount": 199,
+      "status": "paid",
+      "pay_method": "wechat",
+      "created_at": "2026-05-24 10:17:09"
+    },
+    {
+      "id": 19,
+      "user_id": 4,
+      "course_id": 1,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "wechat",
+      "registration_data": {
+        "realname": "����",
+        "phone": "13800138000"
+      },
+      "user_name": "李明",
+      "created_at": "2026-05-24 10:28:33"
+    },
+    {
+      "id": 20,
+      "user_id": 4,
+      "course_id": 2,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "wechat",
+      "registration_data": {
+        "realname": "����",
+        "phone": "13800138000"
+      },
+      "user_name": "李明",
+      "created_at": "2026-05-24 10:28:33"
+    },
+    {
+      "id": 21,
+      "user_id": 4,
+      "course_id": 3,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "wechat",
+      "registration_data": {
+        "realname": "����",
+        "phone": "13800138000"
+      },
+      "user_name": "李明",
+      "created_at": "2026-05-24 10:28:33"
+    },
+    {
+      "id": 22,
+      "user_id": 4,
+      "course_id": 7,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "wechat",
+      "registration_data": {
+        "realname": "����",
+        "phone": "13800138000"
+      },
+      "user_name": "李明",
+      "created_at": "2026-05-24 10:28:33"
+    },
+    {
+      "id": 23,
+      "user_id": 4,
+      "course_id": 11,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "wechat",
+      "registration_data": {
+        "realname": "����",
+        "phone": "13800138000"
+      },
+      "user_name": "李明",
+      "created_at": "2026-05-24 10:28:33"
+    },
+    {
+      "id": 24,
+      "user_id": 5,
+      "course_id": 1,
+      "amount": 299,
+      "status": "paid",
+      "pay_method": "wechat",
+      "registration_data": {
+        "realname": "��ǿ",
+        "phone": "13900001001",
+        "id_card": "321000199001011234",
+        "org_name": "���ݴ�ѧ"
+      },
+      "user_name": "王华",
+      "created_at": "2026-05-24 10:28:44"
+    },
+    {
+      "id": 25,
+      "user_id": 15,
+      "course_id": 1,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "alipay",
+      "registration_data": {
+        "realname": "��ΰ",
+        "phone": "13900139015"
+      },
+      "user_name": "朱华",
+      "created_at": "2026-05-24 10:30:11"
+    },
+    {
+      "id": 26,
+      "user_id": 15,
+      "course_id": 2,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "alipay",
+      "registration_data": {
+        "realname": "��ΰ",
+        "phone": "13900139015"
+      },
+      "user_name": "朱华",
+      "created_at": "2026-05-24 10:30:11"
+    },
+    {
+      "id": 27,
+      "user_id": 15,
+      "course_id": 3,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "alipay",
+      "registration_data": {
+        "realname": "��ΰ",
+        "phone": "13900139015"
+      },
+      "user_name": "朱华",
+      "created_at": "2026-05-24 10:30:11"
+    },
+    {
+      "id": 28,
+      "user_id": 15,
+      "course_id": 7,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "alipay",
+      "registration_data": {
+        "realname": "��ΰ",
+        "phone": "13900139015"
+      },
+      "user_name": "朱华",
+      "created_at": "2026-05-24 10:30:11"
+    },
+    {
+      "id": 29,
+      "user_id": 15,
+      "course_id": 11,
+      "class_id": 1,
+      "amount": 0,
+      "status": "paid",
+      "pay_method": "alipay",
+      "registration_data": {
+        "realname": "��ΰ",
+        "phone": "13900139015"
+      },
+      "user_name": "朱华",
+      "created_at": "2026-05-24 10:30:11"
     }
   ],
   "certificates": [
@@ -1277,11 +1508,11 @@
       "id": 1,
       "user_id": 4,
       "course_id": 1,
-      "progress": 71,
-      "duration_minutes": 558,
+      "progress": 75,
+      "duration_minutes": 45,
       "status": "completed",
       "started_at": "2025-02-5 08:00:00",
-      "last_study_at": "2025-05-1 10:00:00"
+      "last_study_at": "2026-05-22 15:26:18"
     },
     {
       "id": 2,
@@ -1422,6 +1653,16 @@
       "status": "learning",
       "started_at": "2025-04-19 08:00:00",
       "last_study_at": "2025-05-15 24:00:00"
+    },
+    {
+      "id": 17,
+      "user_id": 1,
+      "course_id": "1",
+      "progress": 5,
+      "duration_minutes": 0,
+      "status": "learning",
+      "started_at": "2026-05-22 15:29:49",
+      "last_study_at": "2026-05-24 12:23:28"
     }
   ],
   "settings": [
@@ -1435,7 +1676,7 @@
     },
     {
       "key": "watermark_text",
-      "value": "扬州职业大学继续教育"
+      "value": "扬州职业大学继续教育学院-{realname}-{phone}"
     },
     {
       "key": "min_speed",
@@ -1467,7 +1708,7 @@
     },
     {
       "key": "learning_mode",
-      "value": "class"
+      "value": "course"
     },
     {
       "key": "home_course_count",
@@ -1479,7 +1720,7 @@
     },
     {
       "key": "site_name",
-      "value": "你好扬州职业大学继续教育在线培训平台"
+      "value": "扬州大学"
     },
     {
       "key": "site_subtitle",
@@ -1491,7 +1732,7 @@
     },
     {
       "key": "site_copyright",
-      "value": "Copyright © 2025 扬州职业大学 All Rights Reserved"
+      "value": "Copyright © 2025 扬州职业大学 XXXx"
     },
     {
       "key": "site_template",
@@ -1503,19 +1744,19 @@
     },
     {
       "key": "header_text_color",
-      "value": "#7f7b06"
+      "value": "#d41616"
     },
     {
       "key": "header_bg_color",
-      "value": "#00c3ff"
+      "value": "#0d6e8c"
     },
     {
       "key": "btn_bg_color",
-      "value": "#4d81ea"
+      "value": "#1d13a4"
     },
     {
       "key": "btn_hover_color",
-      "value": "#e37d63"
+      "value": "#1fc1e5"
     },
     {
       "key": "header_line_color",
@@ -1524,6 +1765,30 @@
     {
       "key": "custom_colors_active",
       "value": "true"
+    },
+    {
+      "key": "watermark_color",
+      "value": "#ffffff"
+    },
+    {
+      "key": "watermark_opacity",
+      "value": "0.29"
+    },
+    {
+      "key": "external_system_url",
+      "value": "https://training.chinaedu.net/mizar/portal/index.do"
+    },
+    {
+      "key": "contact_phone",
+      "value": "0514-87654321"
+    },
+    {
+      "key": "contact_email",
+      "value": "测试jxjy@yzpc.edu.cn"
+    },
+    {
+      "key": "contact_address",
+      "value": "扬州市邗江区文昌西路458号"
     }
   ],
   "message_templates": [
@@ -1786,18 +2051,21 @@
   "_nextIds": {
     "users": 26,
     "courses": 21,
-    "orders": 17,
+    "orders": 29,
     "certificates": 21,
     "notifications": 13,
     "notification_reads": 53,
-    "learning_records": 16,
+    "learning_records": 17,
     "message_templates": 5,
     "wx_menu": 10,
     "registration_fields": 6,
     "exam_records": 11,
     "projects": 7,
     "faq": 6,
-    "classes": 5
+    "classes": 5,
+    "course_types": 5,
+    "course_chapters": 48,
+    "message_queues": 3
   },
   "projects": [
     {
@@ -1915,7 +2183,8 @@
         7,
         8,
         9,
-        10
+        10,
+        15
       ],
       "created_at": "2025-03-01 08:00:00"
     },
@@ -1982,5 +2251,274 @@
       ],
       "created_at": "2025-05-01 08:00:00"
     }
-  ]
+  ],
+  "course_types": [
+    {
+      "id": 1,
+      "name": "录播视频",
+      "sort_order": 1
+    },
+    {
+      "id": 2,
+      "name": "直播课程",
+      "sort_order": 2
+    },
+    {
+      "id": 3,
+      "name": "面授课程",
+      "sort_order": 3
+    },
+    {
+      "id": 4,
+      "name": "混合式",
+      "sort_order": 4
+    }
+  ],
+  "course_chapters": [
+    {
+      "id": 44,
+      "course_id": 1,
+      "parent_id": 0,
+      "name": "第一章 导论",
+      "sort_order": 1,
+      "resource_type": "folder",
+      "resource_url": "",
+      "resource_name": "",
+      "duration_minutes": 0,
+      "is_free_preview": false,
+      "extra": ""
+    },
+    {
+      "id": 45,
+      "course_id": 1,
+      "parent_id": 48,
+      "name": "2.1 实操演练",
+      "sort_order": 1,
+      "resource_type": "practice",
+      "resource_url": "",
+      "resource_name": "",
+      "duration_minutes": 60,
+      "is_free_preview": false,
+      "extra": "准备工具"
+    },
+    {
+      "id": 46,
+      "course_id": 1,
+      "parent_id": 47,
+      "name": "视频测试",
+      "sort_order": 1,
+      "resource_type": "video",
+      "resource_url": "/uploads/1779617728651-fg8e40.mp4",
+      "resource_name": "1779617728651-fg8e40.mp4",
+      "duration_minutes": 0,
+      "is_free_preview": false,
+      "extra": "",
+      "created_at": "2026-05-24 10:15:28"
+    },
+    {
+      "id": 47,
+      "course_id": 1,
+      "parent_id": 44,
+      "name": "1.2 课程大纲",
+      "sort_order": 2,
+      "resource_type": "doc",
+      "resource_url": "",
+      "resource_name": "",
+      "duration_minutes": 0,
+      "is_free_preview": false,
+      "extra": ""
+    },
+    {
+      "id": 48,
+      "course_id": 1,
+      "parent_id": 0,
+      "name": "第二章 核心技能",
+      "sort_order": 2,
+      "resource_type": "folder",
+      "resource_url": "",
+      "resource_name": "",
+      "duration_minutes": 0,
+      "is_free_preview": false,
+      "extra": ""
+    }
+  ],
+  "message_queues": [
+    {
+      "id": 2,
+      "title": "课程开课通知",
+      "content": "您好 {name}，您的课程即将开课，请做好准备。",
+      "template_id": null,
+      "push_methods": [
+        "wechat",
+        "email"
+      ],
+      "target_type": "manual",
+      "target_user_ids": [
+        4,
+        5,
+        6
+      ],
+      "target_filter": null,
+      "status": "partial",
+      "strategy": "once",
+      "strategy_rule": null,
+      "scheduled_at": null,
+      "sent_at": "2026-05-24 10:53:46",
+      "total_count": 6,
+      "sent_count": 5,
+      "failed_count": 1,
+      "read_count": 0,
+      "send_results": [
+        {
+          "user_id": 4,
+          "method": "wechat",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:53:46",
+          "error": null
+        },
+        {
+          "user_id": 4,
+          "method": "email",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:53:46",
+          "error": null
+        },
+        {
+          "user_id": 5,
+          "method": "wechat",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:53:46",
+          "error": null
+        },
+        {
+          "user_id": 5,
+          "method": "email",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:53:46",
+          "error": null
+        },
+        {
+          "user_id": 6,
+          "method": "wechat",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:53:46",
+          "error": null
+        },
+        {
+          "user_id": 6,
+          "method": "email",
+          "status": "failed",
+          "sent_at": null,
+          "error": "模拟发送失败: 网络超时"
+        }
+      ],
+      "created_at": "2026-05-24 10:53:46"
+    },
+    {
+      "id": 3,
+      "title": "证书颁发通知",
+      "content": "恭喜您，结业证书已生成。",
+      "template_id": null,
+      "push_methods": [
+        "wechat"
+      ],
+      "target_type": "manual",
+      "target_user_ids": [
+        4,
+        5
+      ],
+      "target_filter": null,
+      "status": "sent",
+      "strategy": "automated",
+      "strategy_rule": {
+        "trigger": "cert",
+        "template_id": null
+      },
+      "scheduled_at": "2026-05-25 09:00:00",
+      "sent_at": "2026-05-24 10:54:08",
+      "total_count": 2,
+      "sent_count": 2,
+      "failed_count": 0,
+      "read_count": 0,
+      "send_results": [
+        {
+          "user_id": 4,
+          "method": "wechat",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:54:08",
+          "error": null
+        },
+        {
+          "user_id": 5,
+          "method": "wechat",
+          "status": "sent",
+          "sent_at": "2026-05-24 10:54:08",
+          "error": null
+        }
+      ],
+      "created_at": "2026-05-24 10:53:58"
+    }
+  ],
+  "message_config": {
+    "replace_rules": [
+      {
+        "var": "{name}",
+        "source": "学员姓名",
+        "desc": "自动替换为收件人姓名"
+      },
+      {
+        "var": "{course}",
+        "source": "课程名称",
+        "desc": "自动替换为对应课程名"
+      },
+      {
+        "var": "{start_time}",
+        "source": "开课时间",
+        "desc": "自动替换为课程开始时间"
+      },
+      {
+        "var": "{cost}",
+        "source": "缴费金额",
+        "desc": "自动替换为课程金额"
+      },
+      {
+        "var": "{progress}",
+        "source": "学习进度",
+        "desc": "自动替换为学员当前进度百分比"
+      }
+    ],
+    "filter_settings": {
+      "maxRate": 10,
+      "keywords": "���,�ƹ�,Ӫ��",
+      "dndStart": "22:00",
+      "dndEnd": "08:00"
+    },
+    "user_filter": {
+      "roles": [
+        "ȫ����ɫ"
+      ],
+      "org_id": null,
+      "exclude_disabled": true
+    },
+    "push_config": {
+      "wechat": {
+        "enabled": true,
+        "appid": ""
+      },
+      "sms": {
+        "enabled": false,
+        "platform": "������SMS"
+      },
+      "email": {
+        "enabled": true,
+        "smtp": "smtp.yzpc.edu.cn",
+        "from": "noreply@yzpc.edu.cn"
+      }
+    },
+    "delay_config": {
+      "interval": 30,
+      "expire": 72,
+      "retry": 3
+    }
+  }
 }

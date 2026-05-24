@@ -57,6 +57,17 @@ export const api = {
   updateCourseCategory: (id, data) => request('/course-categories/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCourseCategory: (id) => request('/course-categories/' + id, { method: 'DELETE' }),
 
+  getCourseTypes: () => request('/course-types'),
+  createCourseType: (data) => request('/course-types', { method: 'POST', body: JSON.stringify(data) }),
+  updateCourseType: (id, data) => request('/course-types/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCourseType: (id) => request('/course-types/' + id, { method: 'DELETE' }),
+
+  getCourseChapters: (courseId) => request('/courses/' + courseId + '/chapters'),
+  saveChapters: (courseId, chapters) => request('/courses/' + courseId + '/chapters', { method: 'PUT', body: JSON.stringify({ chapters }) }),
+  createChapter: (courseId, data) => request('/courses/' + courseId + '/chapters', { method: 'POST', body: JSON.stringify(data) }),
+  updateChapter: (courseId, chapterId, data) => request('/courses/' + courseId + '/chapters/' + chapterId, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteChapter: (courseId, chapterId) => request('/courses/' + courseId + '/chapters/' + chapterId, { method: 'DELETE' }),
+
   getNotifications: () => request('/notifications'),
   getNotification: (id) => request('/notifications/' + id),
   markNotificationRead: (id, userId) => request(`/notifications/${id}/read`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
@@ -114,6 +125,7 @@ export const api = {
     const s = qs.toString();
     return request('/learning-records' + (s ? '?' + s : ''));
   },
+  updateLearningRecord: (data) => request('/learning-records', { method: 'POST', body: JSON.stringify(data) }),
 
   getSettings: () => request('/settings'),
   saveSettings: (settings) => request('/settings', { method: 'POST', body: JSON.stringify(settings) }),
@@ -148,7 +160,30 @@ export const api = {
   createClass: (data) => request('/classes', { method: 'POST', body: JSON.stringify(data) }),
   updateClass: (id, data) => request('/classes/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteClass: (id) => request('/classes/' + id, { method: 'DELETE' }),
+  classEnroll: (data) => request('/class-enroll', { method: 'POST', body: JSON.stringify(data) }),
 
   ldapSync: (config) => request('/ldap/sync', { method: 'POST', body: JSON.stringify(config) }),
   getLdapConfig: () => request('/ldap/config'),
+
+  // Message Center
+  getMessageConfig: () => request('/message-config'),
+  saveMessageConfig: (data) => request('/message-config', { method: 'POST', body: JSON.stringify(data) }),
+  getMessageQueues: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, v); });
+    const s = qs.toString();
+    return request('/message-queues' + (s ? '?' + s : ''));
+  },
+  getMessageQueue: (id) => request('/message-queues/' + id),
+  createMessageQueue: (data) => request('/message-queues', { method: 'POST', body: JSON.stringify(data) }),
+  updateMessageQueue: (id, data) => request('/message-queues/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMessageQueue: (id) => request('/message-queues/' + id, { method: 'DELETE' }),
+  sendMessage: (id) => request('/message-queues/' + id + '/send', { method: 'POST' }),
+  getDeliveryDetail: (id) => request('/message-queues/' + id + '/delivery'),
+  searchUsers: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)); });
+    const s = qs.toString();
+    return request('/users/search' + (s ? '?' + s : ''));
+  },
 };

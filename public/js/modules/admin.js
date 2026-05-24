@@ -12,6 +12,7 @@ export async function renderAdmin(section) {
       { id: 'users', label: '用户管理', icon: '👥' }, { id: 'roles', label: '角色权限', icon: '🔑' },
       { id: 'projects', label: '项目管理', icon: '📋' }, { id: 'students', label: '学员管理', icon: '🎓' },
       { id: 'classes', label: '班级管理', icon: '🏫' }, { id: 'content', label: '内容管理', icon: '📝' },
+      { id: 'message-center', label: '消息中心', icon: '📨' },
     ]},
     { label: '资源管理', items: [
       { id: 'categories', label: '课程分类', icon: '📂' }, { id: 'courses-list', label: '课程列表', icon: '📚' },
@@ -22,11 +23,13 @@ export async function renderAdmin(section) {
       { id: 'settlement', label: '课程结算', icon: '📊' },
     ]},
     { label: '基础数据管理', items: [
-      { id: 'message-config', label: '消息配置', icon: '✉️' }, { id: 'ldap', label: 'LDAP管理', icon: '🔗' },
+      { id: 'message-config', label: '消息配置', icon: '✉️' },
+      { id: 'ldap', label: 'LDAP管理', icon: '🔗' },
       { id: 'notifications-config', label: '通知公告', icon: '🔔' }, { id: 'learning-config', label: '学习设置', icon: '⚙️' },
       { id: 'home-config', label: '首页设置', icon: '🏠' }, { id: 'registration-config', label: '报名设置', icon: '📝' },
       { id: 'learning-mode', label: '学习模式', icon: '🔄' }, { id: 'data-report', label: '数据报表', icon: '📈' },
       { id: 'wx-menu', label: '微信菜单', icon: '💬' }, { id: 'site-style', label: '网站风格', icon: '🎨' },
+      { id: 'other-config', label: '其他配置', icon: '⚙️' },
     ]},
     { label: '组织管理', items: [{ id: 'organizations', label: '组织机构', icon: '🏢' }] },
   ];
@@ -46,7 +49,7 @@ export async function renderAdmin(section) {
       case 'dashboard': await renderDashboard(); return;
       case 'data-report': await renderDataReportPage(content); break;
       case 'message-config': case 'ldap': case 'notifications-config': case 'learning-config':
-      case 'home-config': case 'registration-config': case 'learning-mode': case 'wx-menu': case 'site-style':
+      case 'home-config': case 'registration-config': case 'learning-mode': case 'wx-menu': case 'site-style': case 'other-config':
         const { renderSettings } = await import('./settings.js');
         await renderSettings(section);
         return;
@@ -73,6 +76,10 @@ async function renderAdminSection(content, section) {
     case 'invoices': renderInvoices(content); break;
     case 'settlement': renderSettlement(content); break;
     case 'organizations': await renderOrganizations(content); break;
+    case 'message-center':
+      const { renderMessageCenter } = await import('./message-center.js');
+      await renderMessageCenter();
+      return;
     default: await renderDashboard();
   }
 }
@@ -541,7 +548,7 @@ window.confirmDeleteCategory = (id, name) => {
 async function renderCoursesList(content) {
   content.innerHTML = `<div class="admin-content-header"><h2>课程列表</h2><div class="flex gap-2"><input class="form-input" id="course-search" placeholder="搜索课程名..." style="width:200px" oninput="window.renderCoursesSearch()"><button class="btn btn-primary btn-sm" onclick="window.showCourseEditModal()">+ 新增课程</button></div></div><div id="courses-list-table"><div class="skeleton skeleton-card"></div></div>`;
   try {
-    const courses = await api.getCourses({});
+    const courses = await api.getCourses({ include_draft: '1' });
     window._allCats = window._allCats || await api.getCourseCategories();
     renderCoursesTable(courses);
   } catch(e) { document.getElementById('courses-list-table').innerHTML = `<div class="empty-state"><h4>暂无课程</h4></div>`; }
@@ -555,7 +562,7 @@ window.renderCoursesSearch = async () => {
 function renderCoursesTable(courses) {
   if (!courses.length) { document.getElementById('courses-list-table').innerHTML = `<div class="empty-state"><div class="empty-icon">📚</div><h4>暂无课程</h4></div>`; return; }
   const rows = courses.map(c => `<tr>
-    <td><div style="width:60px;height:36px;background:var(--color-primary-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--color-primary)">${c.type==='video'?'录播':c.type==='live'?'直播':'面授'}</div></td>
+    <td><div style="width:60px;height:36px;background:var(--color-primary-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--color-primary)">${window.escapeHtml(c.course_type_name||c.type||'录播')}</div></td>
     <td><strong>${window.escapeHtml(c.title)}</strong></td>
     <td>${c.category_name||'-'}</td><td>${c.teacher_name||'-'}</td>
     <td>${c.duration}学时</td>
@@ -571,178 +578,538 @@ function renderCoursesTable(courses) {
 
 window.showCourseEditModal = async (id) => {
   const isNew = !id;
-  let c = { title:'', category_id:0, teacher_id:0, type:'video', duration:0, price:0, description:'', status:'published', sort_order:0 };
+  let c = { title:'', category_id:0, teacher_id:0, type:'video', course_type_id:1, duration:0, price:0, description:'', status:'published', sort_order:0, trailer:'', preview:'' };
   if (!isNew) { try { c = await api.getCourse(id); } catch(e) {} }
-  let cats = [], teachers = [];
-  try { [cats, teachers] = await Promise.all([api.getCourseCategories(), api.getTeachers()]); } catch(e){}
+  let cats = [], teachers = [], courseTypes = [];
+  try { [cats, teachers, courseTypes] = await Promise.all([api.getCourseCategories(), api.getTeachers(), api.getCourseTypes()]); } catch(e){}
   const catOpts = cats.map(cat => `<option value="${cat.id}" ${cat.id===c.category_id?'selected':''}>${cat.name}</option>`).join('');
   const teacherOpts = teachers.map(t => `<option value="${t.id}" ${t.id===c.teacher_id?'selected':''}>${t.realname||t.username}</option>`).join('');
-
-  // Load media data for existing courses
-  let media = { audio: [], video: [], materials: [], trailer: '', preview: '' };
-  if (!isNew) { try { media = await api.getCourseMedia(id); } catch(e) {} }
+  const typeOpts = courseTypes.map(t => `<option value="${t.id}" ${t.id===c.course_type_id?'selected':''}>${t.name}</option>`).join('');
 
   const courseId = id;
-  const mediaData = { ...media };
-
-  const mediaTabHtml = buildCourseMediaTabHtml(mediaData);
+  // Init chapter data
+  window._courseChapters = { courseId, flatList: [] };
+  if (!isNew) {
+    try {
+      const tree = await api.getCourseChapters(id);
+      window._courseChapters.flatList = flattenTree(tree);
+    } catch(e) {}
+  }
 
   window.showModal({
-    title: isNew?'新增课程':'编辑课程', width:'680px',
+    title: isNew?'新增课程':'编辑课程', width:'800px',
     content: `<div class="modal-tabs" id="course-modal-tabs">
       <button class="modal-tab active" onclick="switchCourseModalTab('basic',this)">基本信息</button>
-      ${!isNew ? '<button class="modal-tab" onclick="switchCourseModalTab(\'media\',this)">媒体设置</button>' : ''}
+      ${!isNew ? '<button class="modal-tab" onclick="switchCourseModalTab(\'design\',this)">课程设计</button>' : ''}
     </div>
-    <div id="course-tab-basic" class="modal-tab-content"><div class="settings-grid">
-      <div class="form-group" style="grid-column:1/-1"><label class="form-label">课程名称 <span style="color:red">*</span></label><input class="form-input" id="c-title" value="${window.escapeHtml(c.title||'')}"></div>
-      <div class="form-group"><label class="form-label">课程分类</label><select class="form-select" id="c-cat"><option value="0">请选择分类</option>${catOpts}</select></div>
-      <div class="form-group"><label class="form-label">授课教师</label><select class="form-select" id="c-teacher"><option value="0">请选择教师</option>${teacherOpts}</select></div>
-      <div class="form-group"><label class="form-label">课程类型</label><select class="form-select" id="c-type">
-        <option value="video" ${c.type==='video'?'selected':''}>录播视频</option>
-        <option value="live" ${c.type==='live'?'selected':''}>直播课程</option>
-        <option value="offline" ${c.type==='offline'?'selected':''}>面授课程</option>
-      </select></div>
-      <div class="form-group"><label class="form-label">课程学时</label><input class="form-input" type="number" id="c-duration" value="${c.duration||0}"></div>
-      <div class="form-group"><label class="form-label">课程价格（0为免费）</label><input class="form-input" type="number" id="c-price" value="${c.price||0}"></div>
-      <div class="form-group"><label class="form-label">排序号</label><input class="form-input" type="number" id="c-sort" value="${c.sort_order||0}"></div>
-      <div class="form-group"><label class="form-label">状态</label><select class="form-select" id="c-status">
-        <option value="published" ${c.status==='published'?'selected':''}>已发布</option>
-        <option value="draft" ${c.status==='draft'?'selected':''}>草稿</option>
-      </select></div>
-      <div class="form-group" style="grid-column:1/-1"><label class="form-label">课程描述</label><textarea class="form-textarea" id="c-desc" rows="3">${window.escapeHtml(c.description||'')}</textarea></div>
-    </div></div>
-    <div id="course-tab-media" class="modal-tab-content" style="display:none">${mediaTabHtml}</div>`,
-    confirmText: '保存',
+    <div id="course-tab-basic" class="modal-tab-content">
+      <div class="settings-grid">
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">课程名称 <span style="color:red">*</span></label><input class="form-input" id="c-title" value="${window.escapeHtml(c.title||'')}"></div>
+        <div class="form-group"><label class="form-label">课程分类</label><select class="form-select" id="c-cat"><option value="0">请选择分类</option>${catOpts}</select></div>
+        <div class="form-group"><label class="form-label">授课教师</label><select class="form-select" id="c-teacher"><option value="0">请选择教师</option>${teacherOpts}</select></div>
+        <div class="form-group"><label class="form-label">课程类型</label><select class="form-select" id="c-type-id"><option value="0">请选择类型</option>${typeOpts}</select></div>
+        <div class="form-group"><label class="form-label">课程学时</label><input class="form-input" type="number" id="c-duration" value="${c.duration||0}"></div>
+        <div class="form-group"><label class="form-label">课程价格（0为免费）</label><input class="form-input" type="number" id="c-price" value="${c.price||0}"></div>
+        <div class="form-group"><label class="form-label">排序号</label><input class="form-input" type="number" id="c-sort" value="${c.sort_order||0}"></div>
+        <div class="form-group"><label class="form-label">状态</label><select class="form-select" id="c-status">
+          <option value="published" ${c.status==='published'?'selected':''}>已发布</option>
+          <option value="draft" ${c.status==='draft'?'selected':''}>草稿</option>
+        </select></div>
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">课程描述</label><textarea class="form-textarea" id="c-desc" rows="3">${window.escapeHtml(c.description||'')}</textarea></div>
+        <div class="form-group"><label class="form-label">🎞️ 课程片花 URL <span class="text-sm text-muted">（首页展示播放按钮）</span></label>
+          <input class="form-input" id="c-trailer" value="${window.escapeHtml(c.trailer||'')}" placeholder="粘贴视频链接，如 https://example.com/trailer.mp4">
+        </div>
+        <div class="form-group"><label class="form-label">👁️ 试看内容 URL <span class="text-sm text-muted">（未报名学员可免费观看）</span></label>
+          <input class="form-input" id="c-preview" value="${window.escapeHtml(c.preview||'')}" placeholder="粘贴试看视频链接">
+        </div>
+      </div>
+    </div>
+    <div id="course-tab-design" class="modal-tab-content" style="display:none">
+      ${isNew ? '<div style="padding:40px;text-align:center;color:var(--color-text-muted)">请先保存课程基本信息，再设计课程章节结构</div>' : buildChapterEditorHtml()}
+    </div>`,
+    confirmText: '保存全部',
     onConfirm: async () => {
       const title = document.getElementById('c-title').value.trim();
       if (!title) { window.showToast('请输入课程名称','warning'); return; }
-      const data = { title, category_id: Number(document.getElementById('c-cat').value), teacher_id: Number(document.getElementById('c-teacher').value), type: document.getElementById('c-type').value, duration: Number(document.getElementById('c-duration').value), price: Number(document.getElementById('c-price').value), description: document.getElementById('c-desc').value, status: document.getElementById('c-status').value, sort_order: Number(document.getElementById('c-sort').value) };
+      const ctypeId = Number(document.getElementById('c-type-id').value);
+      // Map back to legacy type string for compatibility
+      const ctypes = { 1:'video', 2:'live', 3:'offline' };
+      const legacyType = ctypeId && window._courseTypesMap && window._courseTypesMap[ctypeId]
+        ? (window._courseTypesMap[ctypeId].name.includes('直播')?'live':window._courseTypesMap[ctypeId].name.includes('面授')?'offline':'video')
+        : (ctypes[ctypeId] || 'video');
+      const data = {
+        title,
+        category_id: Number(document.getElementById('c-cat').value),
+        teacher_id: Number(document.getElementById('c-teacher').value),
+        type: legacyType,
+        course_type_id: ctypeId || 1,
+        duration: Number(document.getElementById('c-duration').value),
+        price: Number(document.getElementById('c-price').value),
+        description: document.getElementById('c-desc').value,
+        status: document.getElementById('c-status').value,
+        sort_order: Number(document.getElementById('c-sort').value),
+        trailer: (document.getElementById('c-trailer').value||'').trim(),
+        preview: (document.getElementById('c-preview').value||'').trim()
+      };
       try {
         let savedId = courseId;
-        if (isNew) { const newCourse = await api.createCourse(data); savedId = newCourse.id; } else { await api.updateCourse(courseId, data); }
-        // Save media data
-        if (!isNew) {
-          collectAndSaveMedia(savedId);
+        if (isNew) {
+          const newCourse = await api.createCourse(data);
+          savedId = newCourse.id;
+        } else {
+          await api.updateCourse(courseId, data);
         }
-        window.showToast(isNew?'课程创建成功':'课程已更新','success');
-        const courses = await api.getCourses({});
+        // Always save chapters if loaded (regardless of which tab user is on)
+        if (window._courseChapters && window._courseChapters.courseId === courseId) {
+          try {
+            // Filter out unsaved temp nodes (negative IDs) - they may have been saved individually
+            const toSave = (window._courseChapters.flatList || []).filter(n => n.id > 0);
+            if (toSave.length > 0) {
+              await api.saveChapters(courseId, toSave);
+            }
+          } catch(e) { console.warn('Save chapters failed:', e); }
+        }
+        window.showToast(isNew?'课程创建成功':'课程已保存（含章节结构）','success');
+        const courses = await api.getCourses({ include_draft: '1' });
         renderCoursesTable(courses);
       } catch(e) { window.showToast(e.message||'保存失败','error'); }
     }
   });
 
-  // Store media data globally for the modal
-  window._courseEditMedia = { courseId, data: mediaData };
+  // Cache course types map for type mapping
+  window._courseTypesMap = {};
+  courseTypes.forEach(t => { window._courseTypesMap[t.id] = t; });
 };
 
-function buildCourseMediaTabHtml(media) {
-  const mediaItem = (item, idx, listKey) => `
-    <div class="media-item" data-idx="${idx}">
-      <div class="media-item-icon">${getFileIcon(item.type || item.url || '')}</div>
-      <div class="media-item-info">
-        <div class="media-item-name">${window.escapeHtml(item.name || '未命名')}</div>
-        <div class="media-item-meta">${item.url ? '<span class="media-item-type">本地文件</span>' : '<span class="media-item-type">外部链接</span>'}${item.size ? ' · ' + formatFileSize(item.size) : ''}</div>
-      </div>
-      <div class="media-item-actions">
-        ${item.url && isMediaFile(item.url) ? `<button class="btn btn-outline btn-xs" onclick="previewMediaFile('${item.url}')">预览</button>` : ''}
-        ${item.link ? `<a href="${item.link}" target="_blank" class="btn btn-outline btn-xs">打开</a>` : ''}
-        <button class="btn btn-outline btn-xs" style="color:var(--color-error)" onclick="removeMediaItem('${listKey}',${idx})">删除</button>
-      </div>
-    </div>`;
+// Flatten tree to flat list (preserving parent_id relationships)
+function flattenTree(nodes, result = []) {
+  nodes.forEach(n => {
+    const { children, ...node } = n;
+    result.push(node);
+    if (children && children.length) flattenTree(children, result);
+  });
+  return result;
+}
 
-  const audioItems = (media.audio || []).map((a, i) => mediaItem(a, i, 'audio')).join('');
-  const videoItems = (media.video || []).map((v, i) => mediaItem(v, i, 'video')).join('');
-  const materialItems = (media.materials || []).map((m, i) => mediaItem(m, i, 'materials')).join('');
+// ===== Chapter Editor =====
+const RESOURCE_TYPES = [
+  { value: 'folder', label: '📁 文件夹（分组）', hasUrl: false },
+  { value: 'video',  label: '🎬 视频', hasUrl: true },
+  { value: 'audio',  label: '🎵 音频', hasUrl: true },
+  { value: 'doc',    label: '📄 文档', hasUrl: true },
+  { value: 'exam',   label: '📝 考试', hasUrl: false },
+  { value: 'discussion', label: '💬 互动讨论', hasUrl: false },
+  { value: 'live',   label: '📡 直播安排', hasUrl: true },
+  { value: 'practice', label: '🔬 实践安排', hasUrl: false },
+  { value: 'offline_activity', label: '🏫 线下活动', hasUrl: false },
+  { value: 'offline_class',    label: '🏛️ 线下课', hasUrl: false },
+];
 
+const RESOURCE_ICONS = { folder:'📁', video:'🎬', audio:'🎵', doc:'📄', exam:'📝', discussion:'💬', live:'📡', practice:'🔬', offline_activity:'🏫', offline_class:'🏛️' };
+
+function buildChapterEditorHtml() {
   return `
-    <div class="media-section">
-      <div class="media-section-header">
-        <h4 class="media-section-title">🎬 课程视频</h4>
-        <div class="media-section-actions">
-          <button class="btn btn-outline btn-sm" onclick="showAddMediaLinkForm('video')">+ 添加链接</button>
-          <label class="btn btn-primary btn-sm" style="cursor:pointer">
-            上传文件
-            <input type="file" accept="video/*" style="display:none" onchange="handleMediaUpload(this,'video')">
-          </label>
+    <div class="chapter-editor-layout">
+      <div class="chapter-tree-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span class="text-sm font-medium">章节结构</span>
+          <button class="btn btn-primary btn-sm" onclick="window.addChapterNode(0)">+ 添加章</button>
+        </div>
+        <div id="chapter-tree-list">${renderChapterTree(window._courseChapters.flatList, 0)}</div>
+        <div id="chapter-tree-empty" style="${window._courseChapters.flatList.length?'display:none':''};padding:40px 0;text-align:center;color:var(--color-text-muted);font-size:0.85rem">
+          暂无章节，点击「+ 添加章」开始设计课程结构
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--color-border-light);font-size:0.7rem;color:var(--color-text-muted);line-height:1.5">
+          💡 <b>提示：</b>点击右侧「确认保存此节点」可单独保存节点；切换回基本信息后点击底部「保存全部」按钮可一次性保存整个课程及所有章节。
         </div>
       </div>
-      <div class="media-list" id="media-list-video">${videoItems || '<div class="media-empty">暂无视频，请上传或添加链接</div>'}</div>
-    </div>
-
-    <div class="media-section">
-      <div class="media-section-header">
-        <h4 class="media-section-title">🎵 课程音频</h4>
-        <div class="media-section-actions">
-          <button class="btn btn-outline btn-sm" onclick="showAddMediaLinkForm('audio')">+ 添加链接</button>
-          <label class="btn btn-primary btn-sm" style="cursor:pointer">
-            上传文件
-            <input type="file" accept="audio/*" style="display:none" onchange="handleMediaUpload(this,'audio')">
-          </label>
-        </div>
-      </div>
-      <div class="media-list" id="media-list-audio">${audioItems || '<div class="media-empty">暂无音频，请上传或添加链接</div>'}</div>
-    </div>
-
-    <div class="media-section">
-      <div class="media-section-header">
-        <h4 class="media-section-title">📁 学习资料</h4>
-        <div class="media-section-actions">
-          <button class="btn btn-outline btn-sm" onclick="showAddMediaLinkForm('materials')">+ 添加链接</button>
-          <label class="btn btn-primary btn-sm" style="cursor:pointer">
-            上传文件
-            <input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.rar,.txt" style="display:none" onchange="handleMediaUpload(this,'materials')">
-          </label>
-        </div>
-      </div>
-      <div class="media-list" id="media-list-materials">${materialItems || '<div class="media-empty">暂无资料，请上传或添加链接</div>'}</div>
-    </div>
-
-    <div class="media-section">
-      <div class="media-section-header">
-        <h4 class="media-section-title">🎞️ 课程片花</h4>
-      </div>
-      <div class="media-single">
-        <div class="form-group">
-          <label class="form-label">片花链接（视频URL）</label>
-          <div class="flex gap-2">
-            <input class="form-input" id="media-trailer-link" value="${window.escapeHtml(media.trailer||'')}" placeholder="输入视频链接地址，如 https://...">
-            <button class="btn btn-outline btn-sm" onclick="saveTrailerLink()" style="white-space:nowrap">保存链接</button>
-          </div>
-        </div>
-        <div class="form-group mt-2">
-          <label class="form-label">或上传片花文件</label>
-          <label class="btn btn-outline btn-sm" style="cursor:pointer">
-            选择视频文件
-            <input type="file" accept="video/*" style="display:none" onchange="handleTrailerUpload(this)">
-          </label>
-          ${media.trailer ? `<div class="media-trailer-preview mt-2"><video src="${media.trailer}" controls style="max-width:100%;max-height:200px;border-radius:6px"></video></div>` : ''}
-        </div>
-      </div>
-    </div>
-
-    <div class="media-section">
-      <div class="media-section-header">
-        <h4 class="media-section-title">👁️ 试看内容</h4>
-      </div>
-      <div class="media-single">
-        <div class="form-group">
-          <label class="form-label">试看链接（视频URL）</label>
-          <div class="flex gap-2">
-            <input class="form-input" id="media-preview-link" value="${window.escapeHtml(media.preview||'')}" placeholder="输入试看视频链接地址">
-            <button class="btn btn-outline btn-sm" onclick="savePreviewLink()" style="white-space:nowrap">保存链接</button>
-          </div>
-        </div>
-        <div class="form-group mt-2">
-          <label class="form-label">或上传试看文件</label>
-          <label class="btn btn-outline btn-sm" style="cursor:pointer">
-            选择视频文件
-            <input type="file" accept="video/*" style="display:none" onchange="handlePreviewUpload(this)">
-          </label>
-          ${media.preview ? `<div class="media-trailer-preview mt-2"><video src="${media.preview}" controls style="max-width:100%;max-height:200px;border-radius:6px"></video></div>` : ''}
-        </div>
+      <div class="chapter-edit-panel" id="chapter-edit-panel">
+        <div style="padding:40px 0;text-align:center;color:var(--color-text-muted);font-size:0.85rem">← 点击章节进行编辑<br><span style="font-size:0.75rem">编辑后可点击下方「确认保存此节点」保存</span></div>
       </div>
     </div>`;
 }
+
+function renderChapterTree(flatList, parentId, depth = 0) {
+  const children = flatList.filter(n => (n.parent_id || 0) === parentId).sort((a,b) => a.sort_order - b.sort_order);
+  if (!children.length) return '';
+  return children.map(node => {
+    const icon = RESOURCE_ICONS[node.resource_type || 'folder'] || '📁';
+    const hasChildren = flatList.some(n => n.parent_id === node.id);
+    const indent = depth * 20;
+    const subTree = hasChildren ? renderChapterTree(flatList, node.id, depth + 1) : '';
+    return `
+      <div class="chapter-node ${node.resource_type && node.resource_type !== 'folder' ? 'leaf' : ''}" data-id="${node.id}">
+        <div class="chapter-node-row" style="padding-left:${indent + 8}px" onclick="window.editChapterNode(${node.id})">
+          <span class="chapter-node-icon">${icon}</span>
+          <span class="chapter-node-name">${window.escapeHtml(node.name || '未命名')}</span>
+          ${node.duration_minutes ? `<span class="chapter-node-dur">${node.duration_minutes}分钟</span>` : ''}
+          ${node.is_free_preview ? '<span class="badge badge-sm badge-info" style="margin-left:4px;font-size:0.6rem">试看</span>' : ''}
+          <div class="chapter-node-actions">
+            ${depth < 5 ? `<button class="btn-icon" title="添加子节点" onclick="event.stopPropagation();window.addChapterNode(${node.id})">+</button>` : ''}
+            <button class="btn-icon" title="上移" onclick="event.stopPropagation();window.moveChapterNode(${node.id},-1)">↑</button>
+            <button class="btn-icon" title="下移" onclick="event.stopPropagation();window.moveChapterNode(${node.id},1)">↓</button>
+            <button class="btn-icon btn-icon-del" title="删除" onclick="event.stopPropagation();window.deleteChapterNode(${node.id})">×</button>
+          </div>
+        </div>
+        ${subTree}
+      </div>`;
+  }).join('');
+}
+
+function refreshChapterTree() {
+  const list = document.getElementById('chapter-tree-list');
+  const empty = document.getElementById('chapter-tree-empty');
+  if (!list) return;
+  const flat = window._courseChapters.flatList;
+  list.innerHTML = renderChapterTree(flat, 0);
+  if (empty) empty.style.display = flat.length ? 'none' : '';
+}
+
+let _chapterNodeIdSeq = -1; // Use negative ids for unsaved nodes
+
+window.addChapterNode = (parentId) => {
+  const newId = _chapterNodeIdSeq--;
+  const siblings = (window._courseChapters.flatList || []).filter(n => (n.parent_id||0) === parentId);
+  const maxSort = siblings.reduce((m, n) => Math.max(m, n.sort_order||0), 0);
+  const node = { id: newId, course_id: window._courseChapters.courseId, parent_id: parentId, name: '新章节', sort_order: maxSort + 1, resource_type: 'folder', resource_url: '', resource_name: '', duration_minutes: 0, is_free_preview: false, extra: '' };
+  window._courseChapters.flatList.push(node);
+  refreshChapterTree();
+  window.editChapterNode(newId);
+};
+
+window.editChapterNode = (nodeId) => {
+  const node = (window._courseChapters.flatList || []).find(n => n.id === nodeId);
+  if (!node) return;
+  // Highlight selected
+  document.querySelectorAll('.chapter-node-row').forEach(r => r.classList.remove('selected'));
+  const row = document.querySelector(`.chapter-node[data-id="${nodeId}"] > .chapter-node-row`);
+  if (row) row.classList.add('selected');
+
+  const panel = document.getElementById('chapter-edit-panel');
+  if (!panel) return;
+  const typeOpts = RESOURCE_TYPES.map(t => `<option value="${t.value}" ${(node.resource_type||'folder')===t.value?'selected':''}>${t.label}</option>`).join('');
+  const rt = node.resource_type || 'folder';
+  const rtDef = RESOURCE_TYPES.find(t => t.value === rt) || RESOURCE_TYPES[0];
+  panel.innerHTML = `
+    <div style="padding:12px">
+      <h4 style="margin-bottom:12px;font-size:0.9rem;font-weight:600">编辑节点</h4>
+      <div class="form-group">
+        <label class="form-label">节点名称 <span style="color:red">*</span></label>
+        <input class="form-input" id="cn-name" value="${window.escapeHtml(node.name||'')}" placeholder="章节名称">
+      </div>
+      <div class="form-group">
+        <label class="form-label">节点类型</label>
+        <select class="form-select" id="cn-type" onchange="window.onChapterTypeChange(this.value)">
+          ${typeOpts}
+        </select>
+      </div>
+      <div id="cn-url-group" class="form-group" style="${rtDef.hasUrl?'':'display:none'}">
+        <label class="form-label">资源文件</label>
+        <input type="hidden" id="cn-url" value="${window.escapeHtml(node.resource_url||'')}">
+        ${node.resource_url ? `
+        <div class="upload-zone has-file" id="upload-zone">
+          <div class="upload-file-info">
+            <span class="upload-file-icon">${rt==='video'?'🎬':rt==='audio'?'🎵':'📄'}</span>
+            <div class="upload-file-detail">
+              <div class="upload-file-name">${window.escapeHtml(node.resource_url.split('/').pop() || node.resource_url)}</div>
+              <div class="upload-file-size">已上传</div>
+            </div>
+            <div class="upload-file-actions">
+              ${rt==='video'||rt==='audio'?`<button class="btn-icon" title="预览" onclick="window.previewChapterResource()">▶</button>`:''}
+              <button class="btn-icon btn-icon-del" title="移除" onclick="window.removeChapterResource(${nodeId})">✕</button>
+              <button class="btn-icon" title="重新上传" onclick="document.getElementById('upload-file-input').click()">🔄</button>
+            </div>
+          </div>
+        </div>
+        ` : `
+        <div class="upload-zone" id="upload-zone" onclick="document.getElementById('upload-file-input').click()">
+          <div class="upload-zone-icon">☁️</div>
+          <div class="upload-zone-text">点击上传或拖拽文件到此处</div>
+          <div class="upload-zone-hint">支持 mp4 / avi / mov / mp3 / wav / pdf / doc 等格式，最大 500MB</div>
+        </div>
+        `}
+        <div class="upload-progress-wrap" id="upload-progress-wrap">
+          <div class="upload-progress-bar"><div class="upload-progress-fill" id="upload-progress-fill"></div></div>
+          <div class="upload-progress-text"><span id="upload-progress-label">上传中...</span><span id="upload-progress-pct">0%</span></div>
+        </div>
+        <div class="upload-error" id="upload-error"></div>
+        <input type="file" id="upload-file-input" style="display:none" accept=".mp4,.avi,.mov,.mkv,.flv,.wmv,.mp3,.wav,.pdf,.doc,.docx,.ppt,.pptx" onchange="window.uploadChapterResource(this, ${nodeId})">
+      </div>
+      <div id="cn-extra-group" class="form-group" style="${rt==='folder'||rtDef.hasUrl?'display:none':''}">
+        <label class="form-label">${rt==='exam'?'考试说明':rt==='discussion'?'讨论主题':rt==='live'?'直播间信息':rt==='practice'?'实践要求':rt==='offline_activity'?'活动安排':rt==='offline_class'?'线下课安排':'备注'}</label>
+        <textarea class="form-textarea" id="cn-extra" rows="3" placeholder="填写详细信息">${window.escapeHtml(node.extra||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">预计时长（分钟）</label>
+        <input class="form-input" type="number" id="cn-dur" value="${node.duration_minutes||0}" min="0">
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="cn-free" ${node.is_free_preview?'checked':''}> 
+          <span>允许免费试看（未报名学员可访问）</span>
+        </label>
+      </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--color-border-light)">
+        <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:8px">💡 点击下方按钮将此节点的修改保存到服务器</div>
+        <button class="btn btn-primary" style="width:100%;padding:10px 0;font-size:0.9rem;font-weight:600" onclick="window.saveChapterNode(${nodeId})">
+          ✅ 确认保存此节点
+        </button>
+        <button class="btn btn-outline" style="width:100%;margin-top:6px;padding:8px 0;font-size:0.8rem;color:var(--color-error);border-color:var(--color-error)" onclick="window.deleteChapterNode(${nodeId})">
+          🗑️ 删除此节点
+        </button>
+      </div>
+    </div>`;
+};
+
+window.onChapterTypeChange = (value) => {
+  const rt = RESOURCE_TYPES.find(t => t.value === value);
+  const urlGroup = document.getElementById('cn-url-group');
+  const extraGroup = document.getElementById('cn-extra-group');
+  const extraLabel = extraGroup?.querySelector('label');
+  if (urlGroup) urlGroup.style.display = (rt && rt.hasUrl) ? '' : 'none';
+  if (extraGroup) {
+    extraGroup.style.display = (value === 'folder' || (rt && rt.hasUrl)) ? 'none' : '';
+    if (extraLabel) extraLabel.textContent = value==='exam'?'考试说明':value==='discussion'?'讨论主题':value==='live'?'直播间信息':value==='practice'?'实践要求':value==='offline_activity'?'活动安排':value==='offline_class'?'线下课安排':'备注';
+  }
+  // Update upload zone icon when type changes
+  const zone = document.getElementById('upload-zone');
+  const zoneIcon = zone?.querySelector('.upload-file-icon');
+  if (zoneIcon && rt) {
+    const icons = { video:'🎬', audio:'🎵', doc:'📄', pdf:'📄' };
+    zoneIcon.textContent = icons[value] || '📄';
+  }
+};
+
+window.uploadChapterResource = async (input, nodeId) => {
+  const file = input.files[0];
+  if (!file) return;
+
+  // Validate file size (500MB)
+  if (file.size > 500 * 1024 * 1024) {
+    window.showToast('文件不能超过 500MB', 'error');
+    input.value = '';
+    return;
+  }
+
+  // Show progress UI
+  const zone = document.getElementById('upload-zone');
+  const progressWrap = document.getElementById('upload-progress-wrap');
+  const progressFill = document.getElementById('upload-progress-fill');
+  const progressLabel = document.getElementById('upload-progress-label');
+  const progressPct = document.getElementById('upload-progress-pct');
+  const errEl = document.getElementById('upload-error');
+
+  if (errEl) errEl.classList.remove('show');
+  if (progressWrap) progressWrap.classList.add('active');
+  if (zone) zone.style.display = 'none';
+
+  try {
+    const result = await uploadFile(file, (pct) => {
+      if (progressFill) progressFill.style.width = pct + '%';
+      if (progressPct) progressPct.textContent = pct + '%';
+      if (progressLabel) progressLabel.textContent = pct < 100 ? '正在上传...' : '处理中...';
+    });
+
+    // Set URL
+    const urlInput = document.getElementById('cn-url');
+    if (urlInput) urlInput.value = result.url;
+
+    // Hide progress, show file info
+    if (progressWrap) progressWrap.classList.remove('active');
+
+    // Update upload zone to show file info
+    if (zone) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const isVideo = /^(mp4|avi|mov|mkv|flv|wmv|webm)$/.test(ext);
+      const isAudio = /^(mp3|wav|ogg|flac)$/.test(ext);
+      const icon = isVideo ? '🎬' : isAudio ? '🎵' : '📄';
+      const sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB';
+
+      zone.className = 'upload-zone has-file';
+      zone.onclick = null; // Remove upload click handler
+      zone.innerHTML = `
+        <div class="upload-file-info">
+          <span class="upload-file-icon">${icon}</span>
+          <div class="upload-file-detail">
+            <div class="upload-file-name" title="${file.name}">${file.name}</div>
+            <div class="upload-file-size">${sizeStr}</div>
+          </div>
+          <div class="upload-file-actions">
+            ${isVideo||isAudio ? `<button class="btn-icon" title="预览" onclick="window.previewChapterResource()">▶</button>` : ''}
+            <button class="btn-icon btn-icon-del" title="移除" onclick="window.removeChapterResource(${nodeId})">✕</button>
+            <button class="btn-icon" title="重新上传" onclick="document.getElementById('upload-file-input').click()">🔄</button>
+          </div>
+        </div>`;
+      zone.style.display = '';
+    }
+
+    // Auto-save the node after upload
+    window.saveChapterNode(nodeId);
+    window.showToast('上传成功，节点已自动保存', 'success');
+
+  } catch(e) {
+    if (progressWrap) progressWrap.classList.remove('active');
+    if (zone) { zone.style.display = ''; zone.onclick = function(){ document.getElementById('upload-file-input').click(); }; }
+    if (errEl) { errEl.textContent = e.message || '上传失败'; errEl.classList.add('show'); }
+    window.showToast(e.message || '上传失败', 'error');
+  }
+  input.value = '';
+};
+
+// Preview uploaded chapter resource
+window.previewChapterResource = () => {
+  const url = document.getElementById('cn-url')?.value;
+  if (!url) return;
+  const ext = (url.split('.').pop()||'').toLowerCase();
+  if (/^(mp4|avi|mov|mkv|flv|wmv|webm)$/.test(ext)) {
+    window.showModal({
+      title: '视频预览', width: '800px',
+      content: `<div style="background:#000;border-radius:8px;overflow:hidden"><video src="${url}" controls autoplay style="width:100%;max-height:60vh"></video></div>`,
+      confirmText: '关闭'
+    });
+  } else if (/^(mp3|wav|ogg|flac)$/.test(ext)) {
+    window.showModal({
+      title: '音频预览', width: '500px',
+      content: `<div style="text-align:center;padding:20px"><div style="font-size:3rem;margin-bottom:16px">🎵</div><audio src="${url}" controls autoplay style="width:100%"></audio></div>`,
+      confirmText: '关闭'
+    });
+  }
+};
+
+// Remove chapter resource (clear the uploaded file)
+window.removeChapterResource = async (nodeId) => {
+  const urlInput = document.getElementById('cn-url');
+  const oldUrl = urlInput?.value;
+  if (urlInput) urlInput.value = '';
+
+  // Reset upload zone to empty state
+  const zone = document.getElementById('upload-zone');
+  if (zone) {
+    zone.className = 'upload-zone';
+    zone.onclick = function(){ document.getElementById('upload-file-input').click(); };
+    zone.innerHTML = `
+      <div class="upload-zone-icon">☁️</div>
+      <div class="upload-zone-text">点击上传或拖拽文件到此处</div>
+      <div class="upload-zone-hint">支持 mp4 / avi / mov / mp3 / wav / pdf / doc 等格式，最大 500MB</div>`;
+  }
+
+  // Delete the old file from server
+  if (oldUrl && oldUrl.startsWith('/uploads/')) {
+    try { await deleteUpload(oldUrl); } catch(e) { console.warn('删除旧文件失败:', e); }
+  }
+
+  // Auto-save to clear the URL on server
+  window.saveChapterNode(nodeId);
+};
+
+window.saveChapterNode = async (nodeId) => {
+  const node = (window._courseChapters.flatList || []).find(n => n.id === nodeId);
+  if (!node) return;
+  const name = document.getElementById('cn-name')?.value?.trim();
+  if (!name) { window.showToast('请输入章节名称','warning'); return; }
+
+  // Collect form data
+  const resource_type = document.getElementById('cn-type')?.value || 'folder';
+  const resource_url = document.getElementById('cn-url')?.value?.trim() || '';
+  const extra = document.getElementById('cn-extra')?.value?.trim() || '';
+  const duration_minutes = Number(document.getElementById('cn-dur')?.value) || 0;
+  const is_free_preview = document.getElementById('cn-free')?.checked || false;
+
+  const courseId = window._courseChapters.courseId;
+  const isNew = nodeId < 0; // Negative IDs are unsaved nodes
+
+  try {
+    const payload = {
+      name, resource_type, resource_url, resource_name: resource_url.split('/').pop() || '',
+      duration_minutes, is_free_preview, extra, parent_id: node.parent_id || 0,
+      sort_order: node.sort_order || 0
+    };
+
+    if (isNew) {
+      // Create on server, get real ID back
+      const created = await api.createChapter(courseId, payload);
+      // Replace temp node in flatList with the server-created node (has real positive ID)
+      const idx = window._courseChapters.flatList.findIndex(n => n.id === nodeId);
+      if (idx >= 0) {
+        window._courseChapters.flatList[idx] = created;
+      } else {
+        window._courseChapters.flatList.push(created);
+      }
+      refreshChapterTree();
+      // Select the newly created node by its real ID
+      const newId = created.id;
+      setTimeout(() => window.editChapterNode(newId), 50);
+      window.showToast('节点已创建并保存', 'success');
+    } else {
+      // Update existing node on server
+      await api.updateChapter(courseId, nodeId, payload);
+      // Sync to local
+      node.name = name;
+      node.resource_type = resource_type;
+      node.resource_url = resource_url;
+      node.extra = extra;
+      node.duration_minutes = duration_minutes;
+      node.is_free_preview = is_free_preview;
+      refreshChapterTree();
+      window.editChapterNode(nodeId);
+      window.showToast('节点已保存', 'success');
+    }
+  } catch(e) {
+    console.error('Save chapter node failed:', e);
+    window.showToast('保存失败: ' + (e.message || '未知错误'), 'error');
+  }
+};
+
+window.deleteChapterNode = async (nodeId) => {
+  // Remove node and all its descendants
+  function collectDesc(id) {
+    const ids = [id];
+    (window._courseChapters.flatList || []).filter(n => n.parent_id === id).forEach(c => ids.push(...collectDesc(c.id)));
+    return ids;
+  }
+  const toRemove = new Set(collectDesc(nodeId));
+
+  const courseId = window._courseChapters.courseId;
+
+  // Call API for nodes that are already saved (positive IDs)
+  const realIdsToDelete = [...toRemove].filter(id => id > 0);
+  let apiError = null;
+  for (const rid of realIdsToDelete) {
+    try { await api.deleteChapter(courseId, rid); } catch(e) { apiError = e; console.warn('Delete chapter failed:', rid, e); }
+  }
+
+  // Remove from local state
+  window._courseChapters.flatList = (window._courseChapters.flatList || []).filter(n => !toRemove.has(n.id));
+  refreshChapterTree();
+  const panel = document.getElementById('chapter-edit-panel');
+  if (panel) panel.innerHTML = '<div style="padding:40px 0;text-align:center;color:var(--color-text-muted);font-size:0.85rem">← 点击章节进行编辑</div>';
+
+  if (apiError) {
+    window.showToast('部分节点删除失败，保存课程时会同步', 'warning');
+  } else if (realIdsToDelete.length > 0) {
+    window.showToast('节点已删除', 'success');
+  }
+};
+
+window.moveChapterNode = (nodeId, dir) => {
+  const flat = window._courseChapters.flatList || [];
+  const node = flat.find(n => n.id === nodeId);
+  if (!node) return;
+  const siblings = flat.filter(n => (n.parent_id||0) === (node.parent_id||0)).sort((a,b) => a.sort_order - b.sort_order);
+  const idx = siblings.findIndex(n => n.id === nodeId);
+  const targetIdx = idx + dir;
+  if (targetIdx < 0 || targetIdx >= siblings.length) return;
+  // Swap sort_order
+  const tmp = siblings[idx].sort_order;
+  siblings[idx].sort_order = siblings[targetIdx].sort_order;
+  siblings[targetIdx].sort_order = tmp;
+  // Ensure different values
+  if (siblings[idx].sort_order === siblings[targetIdx].sort_order) {
+    siblings[idx].sort_order = idx;
+    siblings[targetIdx].sort_order = targetIdx;
+  }
+  refreshChapterTree();
+};
 
 function getFileIcon(urlOrType) {
   if (!urlOrType) return '📄';

@@ -49,7 +49,72 @@ function loadData() {
     if (!data._nextIds) data._nextIds = {};
     data._nextIds.classes = 5;
   }
+  // Migrate: add watermark color/opacity settings to older data
+  if (data.settings && Array.isArray(data.settings)) {
+    if (!data.settings.find(s => s.key === 'watermark_color')) {
+      data.settings.push({ key: 'watermark_color', value: '#ffffff' });
+    }
+    if (!data.settings.find(s => s.key === 'watermark_opacity')) {
+      data.settings.push({ key: 'watermark_opacity', value: '0.12' });
+    }
+  }
   if (!data._nextIds) data._nextIds = {};
+  // Migrate: add course_types table
+  if (!data.course_types) {
+    data.course_types = [
+      { id: 1, name: '录播视频', sort_order: 1 },
+      { id: 2, name: '直播课程', sort_order: 2 },
+      { id: 3, name: '面授课程', sort_order: 3 },
+      { id: 4, name: '混合式', sort_order: 4 },
+    ];
+    data._nextIds.course_types = 5;
+    // Map old type string to course_type_id for existing courses
+    const typeMap = { video: 1, live: 2, offline: 3 };
+    (data.courses || []).forEach(c => {
+      if (!c.course_type_id) {
+        c.course_type_id = typeMap[c.type] || 1;
+      }
+    });
+  }
+  // Migrate: add course_chapters table
+  if (!data.course_chapters) {
+    data.course_chapters = [];
+    data._nextIds.course_chapters = 1;
+  }
+  // Migrate: add trailer/preview fields to existing courses
+  (data.courses || []).forEach(c => {
+    if (c.trailer === undefined) c.trailer = '';
+    if (c.preview === undefined) c.preview = '';
+    if (c.course_type_id === undefined) {
+      const typeMap = { video: 1, live: 2, offline: 3 };
+      c.course_type_id = typeMap[c.type] || 1;
+    }
+  });
+  // Migrate: add message_queues table
+  if (!data.message_queues) {
+    data.message_queues = [];
+    data._nextIds.message_queues = 1;
+  }
+  // Migrate: add message_config table
+  if (!data.message_config) {
+    data.message_config = {
+      replace_rules: [
+        { var: '{name}', source: '学员姓名', desc: '自动替换为收件人姓名' },
+        { var: '{course}', source: '课程名称', desc: '自动替换为对应课程名' },
+        { var: '{start_time}', source: '开课时间', desc: '自动替换为课程开课时间' },
+        { var: '{cost}', source: '缴费金额', desc: '自动替换为课程金额' },
+        { var: '{progress}', source: '学习进度', desc: '自动替换为学员当前进度百分比' }
+      ],
+      filter_settings: { maxRate: 10, keywords: '广告,推广,营销', dndStart: '22:00', dndEnd: '08:00' },
+      user_filter: { roles: ['全部角色'], org_id: null, exclude_disabled: true },
+      push_config: {
+        wechat: { enabled: true, appid: '' },
+        sms: { enabled: false, platform: '阿里云SMS', accessKey: '' },
+        email: { enabled: true, smtp: 'smtp.yzpc.edu.cn', from: 'noreply@yzpc.edu.cn' }
+      },
+      delay_config: { interval: 30, expire: 72, retry: 3 }
+    };
+  }
   saveData();
 }
 
@@ -98,26 +163,26 @@ function createSeedData() {
   ];
 
   const courses = [
-    { id: 1, title: 'Python程序设计', category_id: 1, teacher_id: 2, type: 'video', duration: 64, price: 299, cover: '', description: '系统学习Python编程语言，从基础语法到高级应用', status: 'published', sort_order: 1, created_at: '2025-01-10 00:00:00' },
-    { id: 2, title: '人工智能基础', category_id: 1, teacher_id: 2, type: 'video', duration: 48, price: 359, cover: '', description: '人工智能核心概念与实用技术', status: 'published', sort_order: 2, created_at: '2025-01-12 00:00:00' },
-    { id: 3, title: '大数据技术', category_id: 1, teacher_id: 3, type: 'video', duration: 56, price: 259, cover: '', description: '大数据生态系统与处理技术', status: 'published', sort_order: 3, created_at: '2025-01-15 00:00:00' },
-    { id: 4, title: '机械设计基础', category_id: 2, teacher_id: 3, type: 'video', duration: 48, price: 199, cover: '', description: '机械设计原理与工程应用', status: 'published', sort_order: 4, created_at: '2025-02-01 00:00:00' },
-    { id: 5, title: '电气控制技术', category_id: 2, teacher_id: 3, type: 'video', duration: 40, price: 199, cover: '', description: '电气控制原理与PLC应用', status: 'published', sort_order: 5, created_at: '2025-02-05 00:00:00' },
-    { id: 6, title: '建筑力学', category_id: 3, teacher_id: 2, type: 'video', duration: 56, price: 329, cover: '', description: '建筑力学基本原理与计算方法', status: 'published', sort_order: 6, created_at: '2025-02-10 00:00:00' },
-    { id: 7, title: '土木工程概论', category_id: 3, teacher_id: 2, type: 'video', duration: 32, price: 0, cover: '', description: '土木工程基础知识导论', status: 'published', sort_order: 7, created_at: '2025-02-15 00:00:00' },
-    { id: 8, title: '英语翻译技巧', category_id: 4, teacher_id: 2, type: 'video', duration: 40, price: 159, cover: '', description: '实用英语翻译方法与技巧', status: 'published', sort_order: 8, created_at: '2025-03-01 00:00:00' },
-    { id: 9, title: '财务管理', category_id: 5, teacher_id: 3, type: 'video', duration: 48, price: 259, cover: '', description: '企业财务管理与实务操作', status: 'published', sort_order: 9, created_at: '2025-03-05 00:00:00' },
-    { id: 10, title: '市场营销学', category_id: 5, teacher_id: 3, type: 'video', duration: 40, price: 0, cover: '', description: '现代市场营销理论与实践', status: 'published', sort_order: 10, created_at: '2025-03-10 00:00:00' },
-    { id: 11, title: '计算机应用基础', category_id: 6, teacher_id: 2, type: 'video', duration: 32, price: 0, cover: '', description: '计算机基础知识与Office应用', status: 'published', sort_order: 11, created_at: '2025-03-15 00:00:00' },
-    { id: 12, title: '高等数学', category_id: 6, teacher_id: 3, type: 'video', duration: 48, price: 0, cover: '', description: '高等数学微积分与线性代数', status: 'published', sort_order: 12, created_at: '2025-03-20 00:00:00' },
-    { id: 13, title: '大学英语', category_id: 6, teacher_id: 2, type: 'video', duration: 40, price: 0, cover: '', description: '大学英语综合能力提升', status: 'published', sort_order: 13, created_at: '2025-04-01 00:00:00' },
-    { id: 14, title: '思政教育', category_id: 6, teacher_id: 2, type: 'video', duration: 24, price: 0, cover: '', description: '思想政治理论教育', status: 'published', sort_order: 14, created_at: '2025-04-05 00:00:00' },
-    { id: 15, title: '创新创业', category_id: 6, teacher_id: 3, type: 'video', duration: 32, price: 0, cover: '', description: '创新创业思维与实践', status: 'published', sort_order: 15, created_at: '2025-04-10 00:00:00' },
-    { id: 16, title: '最新技术前沿讲座', category_id: 7, teacher_id: 2, type: 'live', duration: 8, price: 0, cover: '', description: 'AI/大数据/云计算技术前沿分享', status: 'published', sort_order: 16, created_at: '2025-04-15 00:00:00' },
-    { id: 17, title: '行业专家分享', category_id: 7, teacher_id: 3, type: 'live', duration: 8, price: 0, cover: '', description: '行业专家实战经验分享', status: 'published', sort_order: 17, created_at: '2025-04-20 00:00:00' },
-    { id: 18, title: '安全教育专题', category_id: 7, teacher_id: 2, type: 'live', duration: 4, price: 0, cover: '', description: '安全生产教育专题讲座', status: 'published', sort_order: 18, created_at: '2025-04-25 00:00:00' },
-    { id: 19, title: '实践技能培训', category_id: 8, teacher_id: 3, type: 'offline', duration: 24, price: 399, cover: '', description: '线下实践技能操作培训', status: 'published', sort_order: 19, created_at: '2025-05-01 00:00:00' },
-    { id: 20, title: '团队协作实训', category_id: 8, teacher_id: 2, type: 'offline', duration: 16, price: 299, cover: '', description: '团队协作与沟通能力实训', status: 'published', sort_order: 20, created_at: '2025-05-05 00:00:00' },
+    { id: 1, title: 'Python程序设计', category_id: 1, teacher_id: 2, type: 'video', course_type_id: 1, duration: 64, price: 299, cover: '', description: '系统学习Python编程语言，从基础语法到高级应用', status: 'published', sort_order: 1, trailer: '', preview: '', created_at: '2025-01-10 00:00:00' },
+    { id: 2, title: '人工智能基础', category_id: 1, teacher_id: 2, type: 'video', course_type_id: 1, duration: 48, price: 359, cover: '', description: '人工智能核心概念与实用技术', status: 'published', sort_order: 2, trailer: '', preview: '', created_at: '2025-01-12 00:00:00' },
+    { id: 3, title: '大数据技术', category_id: 1, teacher_id: 3, type: 'video', course_type_id: 1, duration: 56, price: 259, cover: '', description: '大数据生态系统与处理技术', status: 'published', sort_order: 3, trailer: '', preview: '', created_at: '2025-01-15 00:00:00' },
+    { id: 4, title: '机械设计基础', category_id: 2, teacher_id: 3, type: 'video', course_type_id: 1, duration: 48, price: 199, cover: '', description: '机械设计原理与工程应用', status: 'published', sort_order: 4, trailer: '', preview: '', created_at: '2025-02-01 00:00:00' },
+    { id: 5, title: '电气控制技术', category_id: 2, teacher_id: 3, type: 'video', course_type_id: 1, duration: 40, price: 199, cover: '', description: '电气控制原理与PLC应用', status: 'published', sort_order: 5, trailer: '', preview: '', created_at: '2025-02-05 00:00:00' },
+    { id: 6, title: '建筑力学', category_id: 3, teacher_id: 2, type: 'video', course_type_id: 1, duration: 56, price: 329, cover: '', description: '建筑力学基本原理与计算方法', status: 'published', sort_order: 6, trailer: '', preview: '', created_at: '2025-02-10 00:00:00' },
+    { id: 7, title: '土木工程概论', category_id: 3, teacher_id: 2, type: 'video', course_type_id: 1, duration: 32, price: 0, cover: '', description: '土木工程基础知识导论', status: 'published', sort_order: 7, trailer: '', preview: '', created_at: '2025-02-15 00:00:00' },
+    { id: 8, title: '英语翻译技巧', category_id: 4, teacher_id: 2, type: 'video', course_type_id: 1, duration: 40, price: 159, cover: '', description: '实用英语翻译方法与技巧', status: 'published', sort_order: 8, trailer: '', preview: '', created_at: '2025-03-01 00:00:00' },
+    { id: 9, title: '财务管理', category_id: 5, teacher_id: 3, type: 'video', course_type_id: 1, duration: 48, price: 259, cover: '', description: '企业财务管理与实务操作', status: 'published', sort_order: 9, trailer: '', preview: '', created_at: '2025-03-05 00:00:00' },
+    { id: 10, title: '市场营销学', category_id: 5, teacher_id: 3, type: 'video', course_type_id: 1, duration: 40, price: 0, cover: '', description: '现代市场营销理论与实践', status: 'published', sort_order: 10, trailer: '', preview: '', created_at: '2025-03-10 00:00:00' },
+    { id: 11, title: '计算机应用基础', category_id: 6, teacher_id: 2, type: 'video', course_type_id: 1, duration: 32, price: 0, cover: '', description: '计算机基础知识与Office应用', status: 'published', sort_order: 11, trailer: '', preview: '', created_at: '2025-03-15 00:00:00' },
+    { id: 12, title: '高等数学', category_id: 6, teacher_id: 3, type: 'video', course_type_id: 1, duration: 48, price: 0, cover: '', description: '高等数学微积分与线性代数', status: 'published', sort_order: 12, trailer: '', preview: '', created_at: '2025-03-20 00:00:00' },
+    { id: 13, title: '大学英语', category_id: 6, teacher_id: 2, type: 'video', course_type_id: 1, duration: 40, price: 0, cover: '', description: '大学英语综合能力提升', status: 'published', sort_order: 13, trailer: '', preview: '', created_at: '2025-04-01 00:00:00' },
+    { id: 14, title: '思政教育', category_id: 6, teacher_id: 2, type: 'video', course_type_id: 1, duration: 24, price: 0, cover: '', description: '思想政治理论教育', status: 'published', sort_order: 14, trailer: '', preview: '', created_at: '2025-04-05 00:00:00' },
+    { id: 15, title: '创新创业', category_id: 6, teacher_id: 3, type: 'video', course_type_id: 1, duration: 32, price: 0, cover: '', description: '创新创业思维与实践', status: 'published', sort_order: 15, trailer: '', preview: '', created_at: '2025-04-10 00:00:00' },
+    { id: 16, title: '最新技术前沿讲座', category_id: 7, teacher_id: 2, type: 'live', course_type_id: 2, duration: 8, price: 0, cover: '', description: 'AI/大数据/云计算技术前沿分享', status: 'published', sort_order: 16, trailer: '', preview: '', created_at: '2025-04-15 00:00:00' },
+    { id: 17, title: '行业专家分享', category_id: 7, teacher_id: 3, type: 'live', course_type_id: 2, duration: 8, price: 0, cover: '', description: '行业专家实战经验分享', status: 'published', sort_order: 17, trailer: '', preview: '', created_at: '2025-04-20 00:00:00' },
+    { id: 18, title: '安全教育专题', category_id: 7, teacher_id: 2, type: 'live', course_type_id: 2, duration: 4, price: 0, cover: '', description: '安全生产教育专题讲座', status: 'published', sort_order: 18, trailer: '', preview: '', created_at: '2025-04-25 00:00:00' },
+    { id: 19, title: '实践技能培训', category_id: 8, teacher_id: 3, type: 'offline', course_type_id: 3, duration: 24, price: 399, cover: '', description: '线下实践技能操作培训', status: 'published', sort_order: 19, trailer: '', preview: '', created_at: '2025-05-01 00:00:00' },
+    { id: 20, title: '团队协作实训', category_id: 8, teacher_id: 2, type: 'offline', course_type_id: 3, duration: 16, price: 299, cover: '', description: '团队协作与沟通能力实训', status: 'published', sort_order: 20, trailer: '', preview: '', created_at: '2025-05-05 00:00:00' },
   ];
 
   const orders = [
@@ -195,6 +260,8 @@ function createSeedData() {
     { key: 'video_quality', value: 'hd' },
     { key: 'hour_minutes', value: '45' },
     { key: 'watermark_text', value: '扬州职业大学继续教育' },
+    { key: 'watermark_color', value: '#ffffff' },
+    { key: 'watermark_opacity', value: '0.12' },
     { key: 'min_speed', value: '1.0' },
     { key: 'max_speed', value: '2.0' },
     { key: 'allow_fast_forward', value: '1' },
@@ -262,7 +329,14 @@ function createSeedData() {
       { id:4, question:'平台支持哪些支付方式？', answer:'平台支持微信支付、支付宝、银联等在线支付方式，也支持线下转账缴费。', sort_order:3 },
       { id:5, question:'课程学习有时间限制吗？', answer:'课程学习期限以项目设置为准，具体请查看课程详情页面中的"学习有效期"说明。', sort_order:4 },
     ],
-    _nextIds: { users: 25, courses: 21, orders: 16, certificates: 21, notifications: 9, notification_reads: 50, learning_records: 16, message_templates: 5, wx_menu: 10, registration_fields: 6, exam_records: 11, course_categories: 9, organizations: 7, projects: 6, faq: 6, classes: 5 }
+    _nextIds: { users: 25, courses: 21, orders: 16, certificates: 21, notifications: 9, notification_reads: 50, learning_records: 16, message_templates: 5, wx_menu: 10, registration_fields: 6, exam_records: 11, course_categories: 9, organizations: 7, projects: 6, faq: 6, classes: 5, course_types: 5, course_chapters: 1 },
+    course_types: [
+      { id: 1, name: '录播视频', sort_order: 1 },
+      { id: 2, name: '直播课程', sort_order: 2 },
+      { id: 3, name: '面授课程', sort_order: 3 },
+      { id: 4, name: '混合式', sort_order: 4 },
+    ],
+    course_chapters: []
   };
 }
 

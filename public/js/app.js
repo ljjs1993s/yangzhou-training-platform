@@ -86,18 +86,22 @@ function renderHeader() {
   const user = window.getCurrentUser();
   const s = window._siteSettings || {};
   const logoMain = s.site_name ? s.site_name.replace(/继续教育.*$/, '') : '扬州职业大学';
-  const logoSub = s.site_name && s.site_name.includes('继续教育') ? '继续教育' : '继续教育';
+  const logoSub = s.site_subtitle || '继续教育';
 
   if (hash.startsWith('admin')) {
-    // Admin header
-    header.innerHTML = `<div class="header-admin" style="height:var(--header-height);display:flex;align-items:center">
-      <div class="header-logo" style="display:flex;align-items:center;gap:12px;padding-left:24px">
-        <span style="font-size:1.25rem;font-weight:700">&#9679;</span> 管理后台
-      </div>
-      <div style="display:flex;align-items:center;gap:16px;padding-right:24px">
-        <a href="#portal" style="color:var(--header-text-color);font-size:0.875rem">返回首页</a>
-        <span style="color:var(--header-text-color);opacity:0.7;font-size:0.875rem">${user ? user.realname : '管理员'}</span>
-        <button onclick="logout()" class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:var(--header-text-color);border:none;padding:4px 12px;border-radius:4px">退出</button>
+    // Admin header — 与其他角色统一使用 header-inner / header-actions 结构
+    header.innerHTML = `<div class="header-inner">
+      <a href="#portal" class="header-logo">&#9679; 返回首页</a>
+      <div class="header-actions">
+        ${window._siteSettings?.external_system_url ? `<a href="${window._siteSettings.external_system_url}" target="_blank" rel="noopener" class="header-external-link">🔗 综合系统</a>` : ''}
+        <span style="font-size:0.875rem">${user ? user.realname : '管理员'}</span>
+        <div class="dropdown" id="user-dropdown-admin">
+          <button class="btn btn-sm btn-outline" onclick="document.getElementById('user-dropdown-admin').classList.toggle('open')">菜单</button>
+          <div class="dropdown-menu">
+            <a class="dropdown-item" onclick="document.getElementById('user-dropdown-admin').classList.remove('open');window.location.hash='#portal'">返回首页</a>
+            <a class="dropdown-item" onclick="event.stopPropagation();document.getElementById('user-dropdown-admin').classList.remove('open');logout()">退出登录</a>
+          </div>
+        </div>
       </div>
     </div>`;
     header.className = '';
@@ -176,13 +180,49 @@ function renderFooter() {
   const copyright = s.site_copyright || '\u00A9 2025 扬州职业大学继续教育学院 版权所有';
   document.getElementById('app-footer').innerHTML = `<div class="footer-inner">
     <span>${window.escapeHtml(copyright)}</span>
-    <div class="footer-links">
+    <div class="footer-links" id="footer-links">
       <a href="#portal">关于我们</a>
-      <a href="#portal">联系方式</a>
+      <a href="javascript:void(0)" class="footer-contact-link">联系方式</a>
       <a href="#portal">帮助中心</a>
       <a href="#portal">隐私政策</a>
     </div>
   </div>`;
+
+  // Bind contact link via event delegation
+  const footerLinks = document.getElementById('footer-links');
+  if (footerLinks) {
+    footerLinks.addEventListener('click', (e) => {
+      if (e.target.classList.contains('footer-contact-link')) {
+        e.preventDefault();
+        showContactModal();
+      }
+    });
+  }
+}
+
+/* ===== Contact Modal ===== */
+function showContactModal() {
+  const c = window._contactInfo || {};
+  const items = [];
+  const add = (icon, label, value) => { if (value) items.push({ icon, label, value }); };
+  add('📞', '电话', c.phone || '0514-87654321');
+  add('📧', '邮箱', c.email || 'jxjy@yzpc.edu.cn');
+  add('📍', '地址', c.address || '扬州市邗江区文昌西路458号');
+  if (c.work_hours) add('🕐', '工作时间', c.work_hours);
+  if (c.qq) add('💬', 'QQ', c.qq);
+  if (c.wechat) add('💚', '微信', c.wechat);
+
+  window.showModal({
+    title: '联系我们',
+    width: '460px',
+    content: `<div style="padding:8px 0"><div class="contact-info-detail">${items.map(item => `
+      <div class="contact-detail-item">
+        <span class="contact-detail-icon">${item.icon}</span>
+        <div><div class="contact-detail-label">${item.label}</div><div class="contact-detail-value">${window.escapeHtml(item.value)}</div></div>
+      </div>`).join('')}</div></div>`,
+    confirmText: '关闭',
+    cancelText: '',
+  });
 }
 
 /* ===== Login/Register Modals ===== */
@@ -277,14 +317,15 @@ async function route() {
     } else if (hash.startsWith('admin')) {
       if (!user) { window.showLoginModal(); return; }
       const section = hash.split('/')[1] || 'dashboard';
-      const { renderAdmin } = await import('./modules/admin.js');
-      await renderAdmin(section);
+      const mod = await import('./modules/admin.js');
+      await mod.renderAdmin(section);
     } else {
       window.location.hash = '#portal';
     }
   } catch (e) {
     console.error('Route error:', e);
-    main.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h4>页面加载失败</h4><p>${window.escapeHtml(e.message)}</p></div>`;
+    const stack = e.stack ? `<pre style="font-size:0.75rem;text-align:left;max-height:200px;overflow:auto;margin-top:8px">${window.escapeHtml(e.stack)}</pre>` : '';
+    main.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h4>页面加载失败</h4><p style="color:var(--color-error)">${window.escapeHtml(e.message)}</p>${stack}</div>`;
   }
 }
 
@@ -298,9 +339,12 @@ function renderAll() {
 window.addEventListener('DOMContentLoaded', async () => {
   // Load theme FIRST so CSS variables are set before rendering anything
   await initTheme();
+  // Pre-load contact info for footer modal
+  try { window._contactInfo = await api.getContact(); } catch(e) { window._contactInfo = {}; }
   renderAll();
   window.addEventListener('hashchange', () => {
     renderHeader();
+    renderFooter();
     route();
   });
 });

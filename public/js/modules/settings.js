@@ -16,6 +16,7 @@ export async function renderSettings(section) {
     case 'learning-mode': await renderLearningMode(content); break;
     case 'wx-menu': await renderWxMenuConfig(content); break;
     case 'site-style': renderSiteStyle(content); break;
+    case 'other-config': await renderOtherConfig(content); break;
     default: content.innerHTML = `<div class="empty-state"><h4>未知设置页面</h4></div>`;
   }
 }
@@ -24,6 +25,18 @@ export async function renderSettings(section) {
 async function renderMessageConfig(content) {
   let templates = [];
   try { templates = await api.getMessageTemplates(); } catch(e) {}
+
+  // Load persisted message config from backend
+  let msgCfg = { replace_rules: [], filter_settings: {}, user_filter: {}, push_config: {}, delay_config: {} };
+  try { msgCfg = await api.getMessageConfig(); } catch(e) {}
+
+  // Store in window for tab access
+  window._msgConfig = msgCfg;
+  window._replaceRules = msgCfg.replace_rules || [];
+  window._filterSettings = msgCfg.filter_settings || {};
+  window._userFilter = msgCfg.user_filter || {};
+  window._pushCfg = msgCfg.push_config || {};
+  window._delayCfg = msgCfg.delay_config || {};
 
   content.innerHTML = `
     <div class="admin-content-header"><h2>消息配置</h2></div>
@@ -44,14 +57,8 @@ async function renderMessageConfig(content) {
     <p class="text-sm text-muted mb-4">配置消息内容中的动态变量，发送时自动替换为对应值。</p>
     <div class="table-container"><table class="table"><thead><tr><th>替换变量</th><th>替换值来源</th><th>说明</th><th>操作</th></tr></thead>
     <tbody id="replace-rules-body">
-      ${(window._replaceRules||[
-        { var:'{name}', source:'学员姓名', desc:'自动替换为收件人姓名' },
-        { var:'{course}', source:'课程名称', desc:'自动替换为对应课程名' },
-        { var:'{start_time}', source:'开课时间', desc:'自动替换为课程开课时间' },
-        { var:'{cost}', source:'缴费金额', desc:'自动替换为课程金额' },
-        { var:'{progress}', source:'学习进度', desc:'自动替换为学员当前进度百分比' },
-      ]).map((r,i) => `<tr data-idx="${i}">
-        <td><code>${r.var}</code></td>
+      ${(window._replaceRules).map((r,i) => `<tr data-idx="${i}">
+        <td><code>${window.escapeHtml(r.var)}</code></td>
         <td><input class="form-input form-input-sm" value="${window.escapeHtml(r.source||'')}" onchange="window._replaceRules[${i}].source=this.value" style="width:140px"></td>
         <td><input class="form-input form-input-sm" value="${window.escapeHtml(r.desc||'')}" onchange="window._replaceRules[${i}].desc=this.value" style="width:220px"></td>
         <td><button class="btn btn-outline btn-sm" style="color:var(--color-error)" onclick="window.deleteReplaceRule(${i})">删除</button></td>
@@ -59,64 +66,62 @@ async function renderMessageConfig(content) {
     </tbody></table></div>
     <div class="flex gap-2 mt-4">
       <button class="btn btn-outline btn-sm" onclick="window.showAddReplaceRuleModal()">+ 添加替换规则</button>
-      <button class="btn btn-primary btn-sm" onclick="window.showToast('替换策略已保存','success')">保存</button>
+      <button class="btn btn-primary btn-sm" onclick="window.saveReplaceRules()">保存</button>
     </div></div>`;
 
   const getFilterTab = () => `<div class="settings-panel"><h3>消息过滤策略</h3>
-    <div class="settings-row"><div class="settings-row-label">最大发送频率<span class="settings-row-desc">每个用户每小时最多接收消息数</span></div><input class="form-input" id="f-max-rate" value="${window._filterSettings?.maxRate||10}" style="width:100px"><span class="text-sm text-muted ml-2">条/小时</span></div>
-    <div class="settings-row"><div class="settings-row-label">关键词过滤<span class="settings-row-desc">包含过滤关键词的消息将不推送，多个关键词用英文逗号分隔</span></div><input class="form-input" id="f-keywords" value="${window._filterSettings?.keywords||'广告,推广,营销'}" style="width:300px"></div>
+    <div class="settings-row"><div class="settings-row-label">最大发送频率<span class="settings-row-desc">每个用户每小时最多接收消息数</span></div><input class="form-input" id="f-max-rate" value="${window._filterSettings.maxRate||10}" style="width:100px"><span class="text-sm text-muted ml-2">条/小时</span></div>
+    <div class="settings-row"><div class="settings-row-label">关键词过滤<span class="settings-row-desc">包含过滤关键词的消息将不推送，多个关键词用英文逗号分隔</span></div><input class="form-input" id="f-keywords" value="${window._filterSettings.keywords||'广告,推广,营销'}" style="width:300px"></div>
     <div class="settings-row"><div class="settings-row-label">免打扰时段<span class="settings-row-desc">该时段内不推送任何消息</span></div>
-      <input class="form-input" id="f-dnd-start" value="${window._filterSettings?.dndStart||'22:00'}" style="width:100px">
+      <input class="form-input" id="f-dnd-start" value="${window._filterSettings.dndStart||'22:00'}" style="width:100px">
       <span class="text-sm mx-2">至</span>
-      <input class="form-input" id="f-dnd-end" value="${window._filterSettings?.dndEnd||'08:00'}" style="width:100px">
+      <input class="form-input" id="f-dnd-end" value="${window._filterSettings.dndEnd||'08:00'}" style="width:100px">
     </div>
     <button class="btn btn-primary btn-sm mt-4" onclick="window.saveFilterSettings()">保存过滤策略</button></div>`;
 
   const getUserFilterTab = () => `<div class="settings-panel"><h3>用户过滤策略</h3>
     <div class="settings-row"><div class="settings-row-label">按角色过滤<span class="settings-row-desc">仅向指定角色发送消息</span></div>
-      <div class="flex gap-3">${['全部角色','学员','教师','管理员'].map(r=>`<label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" name="role-filter" value="${r}" ${r==='全部角色'?'checked':''}> ${r}</label>`).join('')}</div>
+      <div class="flex gap-3">${['全部角色','学员','教师','管理员'].map(r=>{
+        const roles = window._userFilter.roles || ['全部角色'];
+        return `<label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" name="role-filter" value="${r}" ${roles.includes(r)?'checked':''}> ${r}</label>`;
+      }).join('')}</div>
     </div>
     <div class="settings-row"><div class="settings-row-label">按机构过滤<span class="settings-row-desc">仅向选定机构成员发送</span></div>
       <select class="form-select" id="uf-org" style="width:200px">
-        <option>全部机构</option><option>信息工程学院</option><option>机电工程学院</option><option>建筑工程学院</option>
+        <option value="">全部机构</option>${(window._userFilter.org_id?'<option value="'+window._userFilter.org_id+'" selected>已选机构</option>':'')}
       </select>
     </div>
     <div class="settings-row"><div class="settings-row-label">排除已退学用户<span class="settings-row-desc">自动过滤状态为禁用的用户</span></div>
-      <label class="toggle-switch"><input type="checkbox" id="uf-exclude-disabled" checked><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+      <label class="toggle-switch"><input type="checkbox" id="uf-exclude-disabled" ${window._userFilter.exclude_disabled!==false?'checked':''}><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
     </div>
-    <button class="btn btn-primary btn-sm mt-4" onclick="window.showToast('用户过滤策略已保存','success')">保存过滤策略</button></div>`;
+    <button class="btn btn-primary btn-sm mt-4" onclick="window.saveUserFilterSettings()">保存过滤策略</button></div>`;
 
   const getTemplatesTab = () => `<div class="settings-panel"><h3>消息模板管理</h3>
     <div class="table-container"><table class="table"><thead><tr><th>模板名称</th><th>类型</th><th>标题</th><th>状态</th><th>操作</th></tr></thead>
     <tbody id="msg-templates-body">${renderTemplateRows(window._msgTemplates)}</tbody></table></div>
     <button class="btn btn-primary btn-sm mt-4" onclick="window.showMsgTemplateModal()">+ 新建模板</button></div>`;
 
-  const getPushTab = () => `<div class="settings-panel"><h3>推送方式配置</h3>
-    <div class="settings-row"><div class="settings-row-label">微信推送<span class="settings-row-desc">通过微信公众号推送消息</span></div><label class="toggle-switch"><input type="checkbox" id="push-wx" checked><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
-    <div id="push-wx-config" class="ml-6 mb-4"><div class="form-group" style="max-width:400px"><label class="form-label">公众号 AppID</label><input class="form-input" placeholder="wx开头的AppID"></div></div>
-    <div class="settings-row"><div class="settings-row-label">短信推送<span class="settings-row-desc">通过短信网关发送消息</span></div><label class="toggle-switch"><input type="checkbox" id="push-sms"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
-    <div id="push-sms-config" class="ml-6 mb-4" style="display:none"><div class="settings-grid"><div class="form-group"><label class="form-label">短信平台</label><select class="form-select"><option>阿里云SMS</option><option>腾讯云SMS</option></select></div><div class="form-group"><label class="form-label">AccessKey</label><input class="form-input" placeholder="AccessKeyId"></div></div></div>
-    <div class="settings-row"><div class="settings-row-label">邮件推送<span class="settings-row-desc">通过SMTP发送邮件</span></div><label class="toggle-switch"><input type="checkbox" id="push-email" checked><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
-    <div id="push-email-config" class="ml-6 mb-4"><div class="settings-grid"><div class="form-group"><label class="form-label">SMTP服务器</label><input class="form-input" value="smtp.yzpc.edu.cn"></div><div class="form-group"><label class="form-label">发件人邮箱</label><input class="form-input" value="noreply@yzpc.edu.cn"></div></div></div>
-    <button class="btn btn-primary btn-sm mt-2" onclick="window.showToast('推送配置已保存','success')">保存推送配置</button></div>`;
+  const getPushTab = () => {
+    const pc = window._pushCfg || {};
+    return `<div class="settings-panel"><h3>推送方式配置</h3>
+    <div class="settings-row"><div class="settings-row-label">微信推送<span class="settings-row-desc">通过微信公众号推送消息</span></div><label class="toggle-switch"><input type="checkbox" id="push-wx" ${(pc.wechat||{}).enabled!==false?'checked':''}><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
+    <div id="push-wx-config" class="ml-6 mb-4"><div class="form-group" style="max-width:400px"><label class="form-label">公众号 AppID</label><input class="form-input" id="push-wx-appid" value="${window.escapeHtml((pc.wechat||{}).appid||'')}" placeholder="wx开头的AppID"></div></div>
+    <div class="settings-row"><div class="settings-row-label">短信推送<span class="settings-row-desc">通过短信网关发送消息</span></div><label class="toggle-switch"><input type="checkbox" id="push-sms" ${(pc.sms||{}).enabled?'checked':''}><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
+    <div id="push-sms-config" class="ml-6 mb-4" style="display:${(pc.sms||{}).enabled?'':'none'}"><div class="settings-grid"><div class="form-group"><label class="form-label">短信平台</label><select class="form-select" id="push-sms-platform"><option value="阿里云SMS" ${(pc.sms||{}).platform==='阿里云SMS'?'selected':''}>阿里云SMS</option><option value="腾讯云SMS" ${(pc.sms||{}).platform==='腾讯云SMS'?'selected':''}>腾讯云SMS</option></select></div><div class="form-group"><label class="form-label">AccessKey</label><input class="form-input" id="push-sms-ak" value="${window.escapeHtml((pc.sms||{}).accessKey||'')}" placeholder="AccessKeyId"></div></div></div>
+    <div class="settings-row"><div class="settings-row-label">邮件推送<span class="settings-row-desc">通过SMTP发送邮件</span></div><label class="toggle-switch"><input type="checkbox" id="push-email" ${(pc.email||{}).enabled!==false?'checked':''}><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
+    <div id="push-email-config" class="ml-6 mb-4"><div class="settings-grid"><div class="form-group"><label class="form-label">SMTP服务器</label><input class="form-input" id="push-email-smtp" value="${window.escapeHtml((pc.email||{}).smtp||'')}"></div><div class="form-group"><label class="form-label">发件人邮箱</label><input class="form-input" id="push-email-from" value="${window.escapeHtml((pc.email||{}).from||'')}"></div></div></div>
+    <button class="btn btn-primary btn-sm mt-2" onclick="window.savePushConfig()">保存推送配置</button></div>`;
+  };
 
   const getDelayTab = () => `<div class="settings-panel"><h3>延迟发送配置</h3>
     <div class="settings-grid">
-      <div class="form-group"><label class="form-label">轮询间隔时间（秒）</label><input class="form-input" type="number" id="d-interval" value="${window._delayCfg?.interval||30}" min="5" max="300"><span class="form-help">系统每隔该时间检查待发送消息队列</span></div>
-      <div class="form-group"><label class="form-label">消息过期时间（小时）</label><input class="form-input" type="number" id="d-expire" value="${window._delayCfg?.expire||72}" min="1" max="720"><span class="form-help">超过该时间未发送的消息将被丢弃</span></div>
-      <div class="form-group"><label class="form-label">失败重试次数</label><input class="form-input" type="number" id="d-retry" value="${window._delayCfg?.retry||3}" min="0" max="10"><span class="form-help">发送失败后最多重试次数</span></div>
+      <div class="form-group"><label class="form-label">轮询间隔时间（秒）</label><input class="form-input" type="number" id="d-interval" value="${window._delayCfg.interval||30}" min="5" max="300"><span class="form-help">系统每隔该时间检查待发送消息队列</span></div>
+      <div class="form-group"><label class="form-label">消息过期时间（小时）</label><input class="form-input" type="number" id="d-expire" value="${window._delayCfg.expire||72}" min="1" max="720"><span class="form-help">超过该时间未发送的消息将被丢弃</span></div>
+      <div class="form-group"><label class="form-label">失败重试次数</label><input class="form-input" type="number" id="d-retry" value="${window._delayCfg.retry||3}" min="0" max="10"><span class="form-help">发送失败后最多重试次数</span></div>
     </div>
     <button class="btn btn-primary btn-sm mt-4" onclick="window.saveDelayConfig()">保存延迟配置</button></div>`;
 
   const tabs = { replace: getReplaceTab, filter: getFilterTab, userfilter: getUserFilterTab, templates: getTemplatesTab, push: getPushTab, delay: getDelayTab };
-
-  if (!window._replaceRules) window._replaceRules = [
-    { var:'{name}', source:'学员姓名', desc:'自动替换为收件人姓名' },
-    { var:'{course}', source:'课程名称', desc:'自动替换为对应课程名' },
-    { var:'{start_time}', source:'开课时间', desc:'自动替换为课程开课时间' },
-    { var:'{cost}', source:'缴费金额', desc:'自动替换为课程金额' },
-    { var:'{progress}', source:'学习进度', desc:'自动替换为学员当前进度百分比' },
-  ];
 
   document.getElementById('msg-tab-content').innerHTML = tabs.replace();
 
@@ -129,6 +134,15 @@ async function renderMessageConfig(content) {
         document.getElementById('push-sms-config').style.display = e.target.checked ? '' : 'none';
       });
     }
+  };
+
+  // Save functions — all persist to backend
+  window.saveReplaceRules = async () => {
+    try {
+      window._msgConfig.replace_rules = window._replaceRules;
+      await api.saveMessageConfig(window._msgConfig);
+      window.showToast('替换策略已保存','success');
+    } catch(e) { window.showToast('保存失败: ' + e.message, 'error'); }
   };
 
   window.deleteReplaceRule = (idx) => {
@@ -153,23 +167,59 @@ async function renderMessageConfig(content) {
     });
   };
 
-  window.saveFilterSettings = () => {
-    window._filterSettings = {
-      maxRate: document.getElementById('f-max-rate').value,
-      keywords: document.getElementById('f-keywords').value,
-      dndStart: document.getElementById('f-dnd-start').value,
-      dndEnd: document.getElementById('f-dnd-end').value,
-    };
-    window.showToast('过滤策略已保存','success');
+  window.saveFilterSettings = async () => {
+    try {
+      window._filterSettings = {
+        maxRate: parseInt(document.getElementById('f-max-rate').value) || 10,
+        keywords: document.getElementById('f-keywords').value,
+        dndStart: document.getElementById('f-dnd-start').value,
+        dndEnd: document.getElementById('f-dnd-end').value,
+      };
+      window._msgConfig.filter_settings = window._filterSettings;
+      await api.saveMessageConfig(window._msgConfig);
+      window.showToast('过滤策略已保存','success');
+    } catch(e) { window.showToast('保存失败: ' + e.message, 'error'); }
   };
 
-  window.saveDelayConfig = () => {
-    window._delayCfg = {
-      interval: document.getElementById('d-interval').value,
-      expire: document.getElementById('d-expire').value,
-      retry: document.getElementById('d-retry').value,
-    };
-    window.showToast('延迟配置已保存','success');
+  window.saveUserFilterSettings = async () => {
+    try {
+      const roles = [];
+      document.querySelectorAll('input[name="role-filter"]:checked').forEach(cb => roles.push(cb.value));
+      window._userFilter = {
+        roles,
+        org_id: document.getElementById('uf-org').value || null,
+        exclude_disabled: document.getElementById('uf-exclude-disabled').checked
+      };
+      window._msgConfig.user_filter = window._userFilter;
+      await api.saveMessageConfig(window._msgConfig);
+      window.showToast('用户过滤策略已保存','success');
+    } catch(e) { window.showToast('保存失败: ' + e.message, 'error'); }
+  };
+
+  window.savePushConfig = async () => {
+    try {
+      window._pushCfg = {
+        wechat: { enabled: document.getElementById('push-wx').checked, appid: document.getElementById('push-wx-appid')?.value || '' },
+        sms: { enabled: document.getElementById('push-sms').checked, platform: document.getElementById('push-sms-platform')?.value || '阿里云SMS', accessKey: document.getElementById('push-sms-ak')?.value || '' },
+        email: { enabled: document.getElementById('push-email').checked, smtp: document.getElementById('push-email-smtp')?.value || '', from: document.getElementById('push-email-from')?.value || '' }
+      };
+      window._msgConfig.push_config = window._pushCfg;
+      await api.saveMessageConfig(window._msgConfig);
+      window.showToast('推送配置已保存','success');
+    } catch(e) { window.showToast('保存失败: ' + e.message, 'error'); }
+  };
+
+  window.saveDelayConfig = async () => {
+    try {
+      window._delayCfg = {
+        interval: parseInt(document.getElementById('d-interval').value) || 30,
+        expire: parseInt(document.getElementById('d-expire').value) || 72,
+        retry: parseInt(document.getElementById('d-retry').value) || 3,
+      };
+      window._msgConfig.delay_config = window._delayCfg;
+      await api.saveMessageConfig(window._msgConfig);
+      window.showToast('延迟配置已保存','success');
+    } catch(e) { window.showToast('保存失败: ' + e.message, 'error'); }
   };
 }
 
@@ -410,7 +460,9 @@ async function renderLearningConfig(content) {
           <option value="uhd" ${settings.video_quality==='uhd'?'selected':''}>超清</option>
         </select></div>
         <div class="form-group"><label class="form-label">一课时分钟数</label><input class="form-input" type="number" id="l-hour-minutes" value="${settings.hour_minutes||45}" min="30" max="60"></div>
-        <div class="form-group"><label class="form-label">在线学习水印文字</label><input class="form-input" id="l-watermark" value="${settings.watermark_text||'扬州职业大学继续教育'}"></div>
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">在线学习水印文字</label><input class="form-input" id="l-watermark" value="${settings.watermark_text||'扬州职业大学继续教育'}" placeholder="支持变量: {username}{realname}{phone}{userid}"><span class="form-help">可用变量：<code>{username}</code> 用户名、<code>{realname}</code> 姓名、<code>{phone}</code> 手机号、<code>{userid}</code> 用户ID。例如：<code>扬州大学-{realname}-{phone}</code></span></div>
+        <div class="form-group"><label class="form-label">水印文字颜色</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="l-watermark-color" value="${settings.watermark_color||'#ffffff'}" style="width:40px;height:36px;border:1px solid var(--color-border);border-radius:4px;cursor:pointer"><span id="l-watermark-color-val" style="font-size:0.85rem;color:var(--color-text-secondary)">${settings.watermark_color||'#ffffff'}</span></div></div>
+        <div class="form-group"><label class="form-label">水印不透明度 <span id="l-watermark-opacity-val" style="font-weight:600">${Math.round((parseFloat(settings.watermark_opacity)||0.12)*100)}%</span></label><input type="range" id="l-watermark-opacity" min="5" max="50" value="${Math.round((parseFloat(settings.watermark_opacity)||0.12)*100)}" style="width:100%"><span class="form-help">值越小越透明，建议 5%~30%</span></div>
         <div class="form-group"><label class="form-label">最小加速倍速</label><input class="form-input" type="number" step="0.25" id="l-min-speed" value="${settings.min_speed||1.0}" min="0.5" max="2"></div>
         <div class="form-group"><label class="form-label">最大加速倍速</label><input class="form-input" type="number" step="0.25" id="l-max-speed" value="${settings.max_speed||2.0}" min="1" max="3"></div>
       </div>
@@ -430,11 +482,26 @@ async function renderLearningConfig(content) {
     <button class="btn btn-primary" onclick="window.saveLearningSettings()">保存设置</button>
   `;
 
+  // 颜色选择器实时预览
+  const colorInput = document.getElementById('l-watermark-color');
+  const colorVal = document.getElementById('l-watermark-color-val');
+  if (colorInput && colorVal) {
+    colorInput.addEventListener('input', () => { colorVal.textContent = colorInput.value; });
+  }
+  // 不透明度滑块实时预览
+  const opacityInput = document.getElementById('l-watermark-opacity');
+  const opacityVal = document.getElementById('l-watermark-opacity-val');
+  if (opacityInput && opacityVal) {
+    opacityInput.addEventListener('input', () => { opacityVal.textContent = opacityInput.value + '%'; });
+  }
+
   window.saveLearningSettings = async () => {
     const data = [
       { key: 'video_quality', value: document.getElementById('l-video-quality').value },
       { key: 'hour_minutes', value: document.getElementById('l-hour-minutes').value },
       { key: 'watermark_text', value: document.getElementById('l-watermark').value },
+      { key: 'watermark_color', value: document.getElementById('l-watermark-color').value },
+      { key: 'watermark_opacity', value: String(parseInt(document.getElementById('l-watermark-opacity').value) / 100) },
       { key: 'min_speed', value: document.getElementById('l-min-speed').value },
       { key: 'max_speed', value: document.getElementById('l-max-speed').value },
       { key: 'allow_fast_forward', value: document.getElementById('l-fast-forward').checked ? '1' : '0' },
@@ -457,7 +524,7 @@ async function renderHomeConfig(content) {
     <div class="settings-panel"><h3>基础展示设置</h3>
       <div class="settings-grid">
         <div class="form-group"><label class="form-label">首页展示课程数量</label><input class="form-input" type="number" id="h-course-count" value="${settings.home_course_count||12}" min="4" max="48"></div>
-        <div class="form-group"><label class="form-label">班级课程显示方式</label><select class="form-select" id="h-display-mode">
+        <div class="form-group"><label class="form-label">首页课程显示方式</label><select class="form-select" id="h-display-mode">
           <option value="course_list" ${(settings.home_display_mode||'course_list')==='course_list'?'selected':''}>课程列表</option>
           <option value="task_list" ${settings.home_display_mode==='task_list'?'selected':''}>课程任务列表</option>
         </select></div>
@@ -799,13 +866,35 @@ async function renderWxMenuConfig(content) {
     <div class="admin-content-header"><h2>微信公众号菜单管理</h2>
       <button class="btn btn-outline btn-sm" onclick="window.addWxMenuItem()">+ 添加一级菜单</button>
     </div>
-    <div style="display:grid;grid-template-columns:280px 1fr;gap:24px">
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:24px">
       <div style="position:sticky;top:80px;align-self:start">
-        <div class="phone-preview">
-          <div class="phone-header">扬州职业大学继续教育</div>
-          <div style="padding:16px;min-height:200px;font-size:0.8rem;color:var(--color-text-muted);text-align:center;padding-top:60px">微信内页面预览区域</div>
-          <div class="phone-menu" id="phone-menu-preview">
-            ${menuData.map(m=>`<div class="phone-menu-item">${m.name}</div>`).join('')}
+        <div class="wx-phone-frame" id="wx-phone">
+          <!-- 状态栏 -->
+          <div class="wx-status-bar">
+            <span class="wx-time" id="wx-status-time">22:30</span>
+            <span class="wx-icons">●●●●○ &nbsp; Wi-Fi &nbsp; <span style="font-size:0.7rem">▮▮▮</span></span>
+          </div>
+          <!-- 导航栏 -->
+          <div class="wx-nav-bar">
+            <span class="wx-back">‹</span>
+            <span class="wx-title">${window.escapeHtml(window._siteName||'扬州职业大学继续教育')}</span>
+          </div>
+          <!-- 内容区 -->
+          <div class="wx-content-area" id="wx-content">
+            <div class="wx-welcome" id="wx-welcome">
+              <div class="wx-logo">继</div>
+              <div class="wx-name">扬州职业大学继续教育</div>
+              <div class="wx-tip">欢迎关注！点击下方菜单体验更多功能</div>
+            </div>
+            <div id="wx-content-dynamic"></div>
+          </div>
+          <!-- 子菜单遮罩 -->
+          <div class="wx-submenu-mask" id="wx-submenu-mask" onclick="window.hideWxSubMenu()"></div>
+          <!-- 子菜单弹出层 -->
+          <div class="wx-submenu-popup" id="wx-submenu-popup"></div>
+          <!-- 底部菜单栏 -->
+          <div class="wx-phone-menu-bar" id="wx-menu-bar">
+            ${menuData.map((m,i) => `<button class="wx-menu-tab" id="wx-tab-${i}" onclick="window.showWxSubMenu(${i})">${window.escapeHtml(m.name)}</button>`).join('')}
           </div>
         </div>
       </div>
@@ -834,11 +923,13 @@ async function renderWxMenuConfig(content) {
     window._wxMenuData[i].subs = window._wxMenuData[i].subs || [];
     window._wxMenuData[i].subs.push({ name:'新子菜单', type:'view', url:'' });
     document.getElementById('wx-menu-editor').innerHTML = renderWxMenuEditor();
+    refreshPhonePreview();
   };
 
   window.deleteWxSubMenu = (i, j) => {
     window._wxMenuData[i].subs.splice(j, 1);
     document.getElementById('wx-menu-editor').innerHTML = renderWxMenuEditor();
+    refreshPhonePreview();
   };
 
   window.onWxMenuNameChange = (i, val) => {
@@ -871,8 +962,75 @@ async function renderWxMenuConfig(content) {
   };
 
   function refreshPhonePreview() {
-    const el = document.getElementById('phone-menu-preview');
-    if (el) el.innerHTML = window._wxMenuData.map(m=>`<div class="phone-menu-item">${window.escapeHtml(m.name)}</div>`).join('');
+    const menuBar = document.getElementById('wx-menu-bar');
+    if (menuBar) {
+      menuBar.innerHTML = window._wxMenuData.map((m,i) => `<button class="wx-menu-tab" id="wx-tab-${i}" onclick="window.showWxSubMenu(${i})">${window.escapeHtml(m.name)}</button>`).join('');
+    }
+    // Also refresh sub-menu popup if it's open
+    const popup = document.getElementById('wx-submenu-popup');
+    const activeTabIdx = window._wxActiveTabIdx;
+    if (popup && activeTabIdx !== undefined && activeTabIdx < window._wxMenuData.length) {
+      popup.innerHTML = renderSubMenuItems(activeTabIdx);
+    }
+  }
+
+  // 显示子菜单弹出
+  window.showWxSubMenu = (i) => {
+    const menu = window._wxMenuData[i];
+    if (!menu || !menu.subs || menu.subs.length === 0) {
+      window.hideWxSubMenu();
+      // 无子菜单时高亮该 tab
+      document.querySelectorAll('.wx-menu-tab').forEach(el => el.classList.remove('active'));
+      const tab = document.getElementById('wx-tab-' + i);
+      if (tab) tab.classList.add('active');
+      return;
+    }
+    // 高亮当前 tab
+    document.querySelectorAll('.wx-menu-tab').forEach(el => el.classList.remove('active'));
+    const tab = document.getElementById('wx-tab-' + i);
+    if (tab) tab.classList.add('active');
+
+    window._wxActiveTabIdx = i;
+    const popup = document.getElementById('wx-submenu-popup');
+    popup.innerHTML = renderSubMenuItems(i);
+    popup.classList.add('active');
+    document.getElementById('wx-submenu-mask').classList.add('active');
+  };
+
+  // 隐藏子菜单弹出
+  window.hideWxSubMenu = () => {
+    document.querySelectorAll('.wx-menu-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('wx-submenu-popup').classList.remove('active');
+    document.getElementById('wx-submenu-mask').classList.remove('active');
+    window._wxActiveTabIdx = undefined;
+  };
+
+  // 点击子菜单项
+  window.wxSubMenuClick = (i, j) => {
+    const sub = (window._wxMenuData[i].subs || [])[j];
+    if (!sub) return;
+    const dynamic = document.getElementById('wx-content-dynamic');
+    const welcome = document.getElementById('wx-welcome');
+    if (welcome) welcome.style.display = 'none';
+
+    if (sub.type === 'view') {
+      dynamic.innerHTML = `<div class="wx-link-card">
+        <div class="wx-link-thumb">🔗</div>
+        <div class="wx-link-info">
+          <div class="wx-link-title">${window.escapeHtml(sub.name)}</div>
+          <div class="wx-link-url">${window.escapeHtml(sub.url || '(未设置链接)')}</div>
+        </div>
+      </div>`;
+    } else {
+      dynamic.innerHTML = `<div class="wx-chat-bubble gray">${window.escapeHtml(sub.name || '已收到您的消息')}</div>`;
+    }
+    window.hideWxSubMenu();
+  };
+
+  function renderSubMenuItems(i) {
+    const subs = window._wxMenuData[i].subs || [];
+    if (subs.length === 0) return '<div class="wx-submenu-item" style="color:#999;cursor:default;text-align:center">暂无子菜单</div>';
+    return subs.map((s, j) => `<button class="wx-submenu-item" onclick="window.wxSubMenuClick(${i},${j})">${window.escapeHtml(s.name)}<span class="wx-sub-arrow">›</span></button>`).join('');
   }
 
   function renderWxMenuEditor() {
@@ -931,7 +1089,7 @@ async function renderSiteStyle(content) {
     </div>
     <div class="settings-panel"><h3>网页模板</h3>
       <div class="settings-grid" style="grid-template-columns:repeat(3,1fr)">
-        ${[{name:'经典布局',icon:'&#9632;',desc:'传统门户风格，顶部导航+右侧边栏+3列课程卡片，信息密度适中，适合内容丰富的平台'},{name:'现代卡片',icon:'&#9670;',desc:'全宽无侧边栏，4列大卡片悬浮效果，视觉冲击力强，突出课程展示'},{name:'简约列表',icon:'&#9654;',desc:'紧凑列表风格，窄侧边栏+2列横向课程卡片，减少干扰，内容优先'}].map((t,i) => `
+        ${[{name:'经典布局',icon:'&#9632;',desc:'传统学术风格，深色渐变 Hero + 左侧装饰线标题 + 右侧边栏面板，信息层次清晰，适合内容丰富的培训门户'},{name:'现代卡片',icon:'&#9670;',desc:'科技感风格，暗色多级渐变 Hero + 毛玻璃卡片悬浮效果，4列大卡片布局，视觉冲击力强，适合课程展示型平台'},{name:'简约列表',icon:'&#9654;',desc:'极简清爽风格，浅色 Hero 无渐变 + 2列横向卡片列表，隐藏侧边栏和统计栏，减少干扰，内容优先'}].map((t,i) => `
         <div class="template-card ${sv('site_template','经典布局')===t.name?'selected':''}" onclick="window.selectTemplate(this,'${t.name}')">
           <div class="template-preview"><span style="font-size:2rem;color:var(--color-primary)">${t.icon}</span></div>
           <h4 style="margin:8px 0 4px">${t.name}</h4>
@@ -1117,5 +1275,44 @@ async function renderSiteStyle(content) {
       applyTheme(settingsObj);
       window.showToast('网站风格保存成功，已全局生效','success');
     } catch(e) { window.showToast('保存失败','error'); }
+  };
+}
+
+/* ===== (11) 其他配置 ===== */
+async function renderOtherConfig(content) {
+  let externalUrl = '';
+  try {
+    const settings = await api.getSettings();
+    externalUrl = settings.external_system_url || '';
+  } catch(e) {}
+
+  content.innerHTML = `
+    <div class="admin-content-header"><h2>其他配置</h2></div>
+    <div class="settings-panel">
+      <h3>外部系统链接</h3>
+      <p class="text-sm text-muted" style="margin-bottom:16px">配置后，管理后台顶部将显示"综合系统"按钮，点击可在新标签页中打开指定网址。</p>
+      <div class="settings-grid">
+        <div class="form-group">
+          <label class="form-label">综合系统地址</label>
+          <input class="form-input" id="ext-system-url" value="${window.escapeHtml(externalUrl)}" placeholder="https://example.com">
+        </div>
+      </div>
+      <div class="flex gap-4 mt-4">
+        <button class="btn btn-primary" onclick="window.saveOtherConfig()">保存配置</button>
+        ${externalUrl ? `<button class="btn btn-outline" onclick="window.open('${window.escapeHtml(externalUrl)}', '_blank')">🔗 测试打开</button>` : ''}
+      </div>
+    </div>`;
+
+  window.saveOtherConfig = async () => {
+    const url = document.getElementById('ext-system-url').value.trim();
+    try {
+      await api.saveSettings([{ key: 'external_system_url', value: url }]);
+      if (!window._siteSettings) window._siteSettings = {};
+      window._siteSettings.external_system_url = url;
+      window.showToast('配置已保存', 'success');
+      await renderOtherConfig(content);
+    } catch(e) {
+      window.showToast('保存失败: ' + e.message, 'error');
+    }
   };
 }

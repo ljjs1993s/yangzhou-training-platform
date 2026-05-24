@@ -299,15 +299,18 @@ export async function renderStudentCourse(id) {
   let course = { title: '课程加载中...', teacher_name: '', duration: 0, price: 0, description: '', type: 'video', category_name: '' };
   let progress = 0;
   let courseMedia = { audio: [], video: [], materials: [], trailer: '', preview: '' };
+  let courseChapters = []; // 课程章节树
   let isEnrolled = false; // 是否已报名（已付费或有免费课程学习记录）
   let isInClass = false; // 是否属于某个班级（班级模式下使用）
   try {
     course = await api.getCourse(id) || course;
-    const [records, media, orders] = await Promise.all([
+    const [records, media, orders, chapters] = await Promise.all([
       api.getLearningRecords({ user_id: user?.id, course_id: id }).catch(() => []),
       api.getCourseMedia(id).catch(() => null),
-      api.getOrders({ user_id: user?.id, course_id: id }).catch(() => [])
+      api.getOrders({ user_id: user?.id, course_id: id }).catch(() => []),
+      api.getCourseChapters(id).catch(() => [])
     ]);
+    courseChapters = chapters || [];
     progress = records?.[0]?.progress || 0;
     if (media) courseMedia = media;
     // Check enrollment: has paid order OR has learning record OR course is free
@@ -318,6 +321,7 @@ export async function renderStudentCourse(id) {
     // Check class mode: if learning_mode is 'class', verify student is in a class containing this course
     try {
       const settings = await api.getSettings();
+      window._learningSettings = settings;
       if (settings.learning_mode === 'class' && user) {
         const classes = await api.getClasses() || [];
         const userClasses = classes.filter(c =>
@@ -336,15 +340,86 @@ export async function renderStudentCourse(id) {
     || (courseMedia.materials && courseMedia.materials.length > 0);
 
   function buildChapterList() {
-    return Array.from({length:8}, (_,i) => {
-      const icon = isEnrolled ? (i < 2 ? '✅ ' : '▶ ') : '🔒 ';
-      const statusText = isEnrolled ? (i < 2 ? '已完成' : '未学习') : '🔒 需报名';
-      const clickHandler = isEnrolled
-        ? "window.showToast('正在播放第" + (i+1) + "章','success')"
-        : "window.showToast('请先报名后再学习课程','warning')";
-      return '<div style="padding:8px 12px;border-bottom:1px solid var(--color-border-light);display:flex;justify-content:space-between;align-items:center;font-size:0.9rem;cursor:pointer" onclick="' + clickHandler + '"><span>' + icon + '📖 第' + (i+1) + '章 章节内容标题</span><span class="text-sm text-muted">' + statusText + '</span></div>';
-    }).join('');
+    if (!courseChapters || !courseChapters.length) {
+      return '<div style="text-align:center;padding:32px;color:var(--color-text-muted)">📖 暂无课程章节</div>';
+    }
+    const RESOURCE_ICONS = { folder:'📁', video:'🎬', audio:'🎵', doc:'📄', exam:'📝', discussion:'💬', live:'📡', practice:'🔬', offline_activity:'🏫', offline_class:'🏛️' };
+    const totalItems = countChapterItems(courseChapters);
+
+    function renderChapterTree(nodes, depth = 0) {
+      if (!nodes || !nodes.length) return '';
+      return nodes.map(node => {
+        const icon = node.resource_type && node.resource_type !== 'folder'
+          ? (RESOURCE_ICONS[node.resource_type] || '📄')
+          : '📁';
+        const dur = node.duration_minutes ? `${node.duration_minutes}分钟` : '';
+        const hasChildren = node.children && node.children.length > 0;
+        const depthClass = depth === 0 ? '' : (depth === 1 ? 'child' : 'grandchild');
+        const freeBadge = node.is_free_preview ? '<span class="badge badge-sm badge-info" style="margin-left:4px;font-size:0.6rem">试看</span>' : '';
+
+        let statusHtml = '';
+        if (!isEnrolled && !node.is_free_preview) {
+          statusHtml = '<span style="color:var(--color-text-muted);font-size:0.75rem;flex-shrink:0">🔒 需报名</span>';
+        } else {
+          // TODO: track per-chapter progress, for now just show available
+          statusHtml = '<span style="color:var(--color-success);font-size:0.75rem;flex-shrink:0">可学习</span>';
+        }
+
+        const canAccess = isEnrolled || node.is_free_preview;
+        const clickHandler = canAccess
+          ? `onclick="window.chapterItemClick(event, ${node.id}, '${(node.resource_type||'folder').replace(/'/g, "\\'")}', '${(node.resource_url||'').replace(/'/g, "\\'")}', '${(node.name||'').replace(/'/g, "\\'")}', ${node.is_free_preview||false})"`
+          : `onclick="window.showToast('请先报名后再学习课程','warning')"`;
+
+        return `
+          <div class="chapter-view-item ${depthClass} ${canAccess ? '' : 'locked'}" ${clickHandler}>
+            <span class="chapter-view-icon">${icon}</span>
+            <div class="chapter-view-info">
+              <div class="chapter-view-name">${window.escapeHtml(node.name || '未命名')}${freeBadge}</div>
+              ${dur ? `<div class="chapter-view-meta">${dur}</div>` : ''}
+            </div>
+            <div class="chapter-view-status">${statusHtml}</div>
+          </div>
+          ${hasChildren ? renderChapterTree(node.children, depth + 1) : ''}`;
+      }).join('');
+    }
+
+    return `<div class="chapter-view-list">${renderChapterTree(courseChapters)}</div>`;
   }
+
+  // Count total chapter items recursively
+  function countChapterItems(nodes) {
+    let count = 0;
+    nodes.forEach(n => {
+      count++;
+      if (n.children && n.children.length) count += countChapterItems(n.children);
+    });
+    return count;
+  }
+
+  // Find the first video-type chapter node in the tree
+  function findFirstVideo(nodes) {
+    if (!nodes || !nodes.length) return null;
+    for (const n of nodes) {
+      if (n.resource_type === 'video' && n.resource_url) return n;
+      if (n.resource_type === 'doc' && n.resource_url && /\.(mp4|webm|ogg)$/i.test(n.resource_url||'')) return n;
+      if (n.children && n.children.length) {
+        const found = findFirstVideo(n.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  // Determine initial video source
+  // For enrolled users: prefer first video chapter, fallback to preview/trailer
+  // For non-enrolled: only use preview/trailer or free-preview chapters
+  const firstVideoChapter = findFirstVideo(courseChapters);
+  const initialVideoSrc = courseMedia.preview || courseMedia.trailer
+    || ((isEnrolled || (firstVideoChapter && firstVideoChapter.is_free_preview)) && firstVideoChapter ? firstVideoChapter.resource_url : '');
+  const initialVideoName = (firstVideoChapter && (isEnrolled || firstVideoChapter.is_free_preview))
+    ? firstVideoChapter.name
+    : (courseMedia.preview ? '试看内容' : (courseMedia.trailer ? '课程片花' : ''));
+  window._currentChapterVideo = (firstVideoChapter && (isEnrolled || firstVideoChapter.is_free_preview)) ? firstVideoChapter : null;
 
   const resourceItemHtml = (item, listKey) => {
     if (!item) return '';
@@ -406,35 +481,47 @@ export async function renderStudentCourse(id) {
   }
 
   main.innerHTML = `
-    <div style="max-width:var(--max-width);margin:0 auto;padding:24px">
+    <div style="max-width:var(--max-width);margin:0 auto;padding:24px;position:relative">
+      <div class="global-watermark-overlay" id="global-watermark"></div>
       <div class="breadcrumb"><a href="#student">学习中心</a><span class="separator">/</span><span>${window.escapeHtml(course.title)}</span></div>
       <div style="display:grid;grid-template-columns:1fr 340px;gap:24px">
         <!-- Video Area -->
         <div>
+          ${initialVideoSrc || isEnrolled ? `
+          <div class="video-player mb-6" id="video-player-container">
+            ${initialVideoSrc ? `
+            <video id="course-video" src="${initialVideoSrc}" style="width:100%;max-height:400px;background:#000"></video>
+            <div class="video-watermark-overlay" id="video-watermark"></div>
+            <div class="video-quality-tag" id="video-quality-tag">${window._learningSettings?.video_quality==='uhd'?'超清':'高清'}</div>
+            ${!isEnrolled ? `<div style="position:absolute;bottom:60px;right:12px;background:rgba(0,0,0,0.7);color:#fff;padding:3px 10px;border-radius:12px;font-size:0.7rem;z-index:10">${courseMedia.preview?'试看视频':'课程片花'}</div>` : ''}
+            <div id="video-chapter-label" style="position:absolute;top:8px;left:12px;background:rgba(0,0,0,0.65);color:#fff;padding:3px 10px;border-radius:4px;font-size:0.75rem;z-index:10;pointer-events:none">${initialVideoName||'课程视频'}</div>
+            <div class="video-controls" id="video-controls-bar">
+              <button id="btn-play" class="video-ctrl-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1rem" title="播放/暂停">▶</button>
+              <span id="time-display" class="video-time" style="font-size:0.8rem;white-space:nowrap;min-width:90px">00:00 / 00:00</span>
+              <div class="progress-wrap" id="progress-wrap"><div class="progress-fill" id="progress-fill" style="width:${progress}%"></div></div>
+              <select id="speed-select" class="video-speed-select" style="background:#333;color:#fff;border:none;padding:2px 4px;border-radius:2px;font-size:0.75rem;cursor:pointer"></select>
+              <button id="btn-volume" class="video-ctrl-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1rem" title="静音/取消静音">🔊</button>
+              <button id="btn-fullscreen" class="video-ctrl-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1rem" title="全屏">⛶</button>
+            </div>
+            ` : `
+            <div class="video-placeholder" style="background:#111;border-radius:8px;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#999;gap:12px">
+              <div style="font-size:3rem">🎬</div>
+              <p class="text-sm">暂无视频资源</p>
+              <p style="font-size:0.75rem;color:#666">请点击下方课程目录中的 <span style="color:var(--color-primary)">🎬 视频</span> 节点开始学习</p>
+            </div>
+            `}
+          </div>
+          ` : `
           <div class="video-player mb-6">
-            ${courseMedia.preview ? `<video src="${courseMedia.preview}" controls style="width:100%;max-height:400px;background:#000"></video>
-              ${!isEnrolled ? `<div style="position:absolute;bottom:60px;right:12px;background:rgba(0,0,0,0.7);color:#fff;padding:3px 10px;border-radius:12px;font-size:0.7rem">试看视频</div>` : ''}` :
-            courseMedia.trailer ? `<video src="${courseMedia.trailer}" controls style="width:100%;max-height:400px;background:#000"></video>
-              ${!isEnrolled ? `<div style="position:absolute;bottom:60px;right:12px;background:rgba(0,0,0,0.7);color:#fff;padding:3px 10px;border-radius:12px;font-size:0.7rem">课程片花</div>` : ''}` :
-            (isEnrolled ? `<div class="video-placeholder">
-              <button class="play-btn" onclick="window.showToast('视频播放已开始','success')">▶</button>
-              <p class="text-sm">${window.escapeHtml(course.title)}</p>
-            </div>` : `<div class="video-placeholder" style="position:relative">
+            <div class="video-placeholder" style="position:relative;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center">
               <button class="play-btn" onclick="window.showToast('请先报名后观看完整课程','warning')">▶</button>
               <p class="text-sm">${window.escapeHtml(course.title)}</p>
               <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">
                 <div style="font-size:2.5rem;opacity:0.5">🔒</div>
                 <div style="color:var(--color-text-muted);font-size:0.85rem;margin-top:4px">请先报名</div>
               </div>
-            </div>`)}
-            <div class="video-controls">
-              <button style="background:none;border:none;color:#fff;cursor:pointer">▶</button>
-              <span class="text-sm">00:${Math.floor(progress*0.4).toString().padStart(2,'0')} / 00:40</span>
-              <div class="progress-wrap"><div class="progress-fill" style="width:${progress}%"></div></div>
-              <select style="background:#333;color:#fff;border:none;padding:2px 4px;border-radius:2px;font-size:0.75rem"><option>1.0x</option><option>1.25x</option><option>1.5x</option><option>2.0x</option></select>
-              <button style="background:none;border:none;color:#fff;cursor:pointer">🔊</button>
             </div>
-          </div>
+          </div>`}
           <!-- Tabs: Chapters / Resources${hasResources?' / Resources':''} / Notes / Discussion -->
           <div class="tabs mb-4" id="course-tabs">
             <button class="tab active" onclick="window.switchCourseTab('chapters',this)">课程目录</button>
@@ -480,6 +567,17 @@ export async function renderStudentCourse(id) {
     </div>
   `;
 
+  // 水印始终初始化（与视频无关，全页面覆盖）
+  if (window._learningSettings) {
+    initWatermark(window._learningSettings, user);
+  }
+  // 视频相关仅在视频存在时初始化
+  if (window._learningSettings && document.getElementById('course-video')) {
+    initVideoPlayer(window._learningSettings, { courseId: id, userId: user.id, isEnrolled });
+    initAntiAfk(window._learningSettings);
+    initProgressTracking(window._learningSettings, { courseId: id, userId: user.id });
+  }
+
   // Media preview for student view
   window.previewMediaFile = (url) => {
     window.showModal({
@@ -493,6 +591,98 @@ export async function renderStudentCourse(id) {
       </div>`,
       confirmText: '关闭'
     });
+  };
+
+  // Chapter item click handler - navigate to content
+  window.chapterItemClick = (event, nodeId, resourceType, resourceUrl, nodeName, isFreePreview) => {
+    // Allow access if enrolled OR chapter is free preview
+    if (!isEnrolled && !isFreePreview) {
+      window.showToast('请先报名后再学习课程', 'warning');
+      return;
+    }
+    // Highlight the clicked item in the chapter list
+    document.querySelectorAll('.chapter-view-item').forEach(el => el.classList.remove('active'));
+    if (event.currentTarget) event.currentTarget.classList.add('active');
+
+    if (resourceType === 'video' && resourceUrl) {
+      // Find or create video player element
+      let videoEl = document.getElementById('course-video');
+      const container = document.getElementById('video-player-container');
+
+      if (!videoEl && container) {
+        // No video element yet (placeholder state) — create one dynamically
+        container.innerHTML = `
+          <video id="course-video" src="${resourceUrl}" style="width:100%;max-height:400px;background:#000"></video>
+          <div class="video-watermark-overlay" id="video-watermark"></div>
+          <div class="video-quality-tag" id="video-quality-tag">${window._learningSettings?.video_quality==='uhd'?'超清':'高清'}</div>
+          <div id="video-chapter-label" style="position:absolute;top:8px;left:12px;background:rgba(0,0,0,0.65);color:#fff;padding:3px 10px;border-radius:4px;font-size:0.75rem;z-index:10;pointer-events:none">${window.escapeHtml(nodeName)}</div>
+          <div class="video-controls" id="video-controls-bar">
+            <button id="btn-play" class="video-ctrl-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1rem" title="播放/暂停">▶</button>
+            <span id="time-display" class="video-time" style="font-size:0.8rem;white-space:nowrap;min-width:90px">00:00 / 00:00</span>
+            <div class="progress-wrap" id="progress-wrap"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+            <select id="speed-select" class="video-speed-select" style="background:#333;color:#fff;border:none;padding:2px 4px;border-radius:2px;font-size:0.75rem;cursor:pointer"></select>
+            <button id="btn-volume" class="video-ctrl-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1rem" title="静音/取消静音">🔊</button>
+            <button id="btn-fullscreen" class="video-ctrl-btn" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1rem" title="全屏">⛶</button>
+          </div>`;
+        // Re-initialize player controls after creating video element
+        if (typeof initVideoPlayer === 'function' && window._learningSettings) {
+          initVideoPlayer(window._learningSettings, { courseId: id, userId: user.id, isEnrolled });
+          if (typeof initAntiAfk === 'function') initAntiAfk(window._learningSettings);
+          if (typeof initProgressTracking === 'function') initProgressTracking(window._learningSettings, { courseId: id, userId: user.id });
+        }
+        window.showToast(`正在播放: ${nodeName}`, 'info');
+        return;
+      }
+
+      // Existing video element — switch source
+      if (videoEl) {
+        videoEl.src = resourceUrl;
+        videoEl.load();
+        videoEl.play().catch(() => {});
+        // Update chapter label
+        const label = document.getElementById('video-chapter-label');
+        if (label) label.textContent = nodeName;
+        else {
+          const newLabel = document.createElement('div');
+          newLabel.id = 'video-chapter-label';
+          newLabel.style.cssText = 'position:absolute;top:8px;left:12px;background:rgba(0,0,0,0.65);color:#fff;padding:3px 10px;border-radius:4px;font-size:0.75rem;z-index:10;pointer-events:none';
+          newLabel.textContent = nodeName;
+          const vpContainer = document.getElementById('video-player-container');
+          if (vpContainer) vpContainer.appendChild(newLabel);
+        }
+        // Mark as current chapter video
+        window._currentChapterVideo = { id: nodeId, resource_url: resourceUrl, name: nodeName };
+        window.showToast(`正在播放: ${nodeName}`, 'info');
+      }
+    } else if (resourceType === 'audio' && resourceUrl) {
+      window.showModal({
+        title: nodeName, width: '500px',
+        content: `<div style="text-align:center;padding:20px"><div style="font-size:3rem;margin-bottom:16px">🎵</div><audio src="${resourceUrl}" controls autoplay style="width:100%"></audio></div>`,
+        confirmText: '关闭'
+      });
+    } else if (resourceType === 'doc' && resourceUrl) {
+      // Check if previewable
+      const url = resourceUrl.toLowerCase();
+      if (/\.(mp4|webm|ogg|mp3|wav)$/.test(url)) {
+        // It's actually media, play it
+        window.chapterItemClick(event, nodeId, /\.(mp4|webm|ogg)$/.test(url) ? 'video' : 'audio', resourceUrl, nodeName);
+        return;
+      }
+      previewMediaFile(resourceUrl);
+    } else if (resourceType === 'folder') {
+      // Toggle expand/collapse children
+      window.showToast(`展开章节: ${nodeName}`, 'info');
+    } else if (resourceType === 'exam') {
+      window.showToast('考试功能即将上线', 'info');
+    } else if (resourceType === 'discussion') {
+      // Switch to discussion tab
+      const discTab = document.querySelector('#course-tabs .tab:last-child');
+      if (discTab) window.switchCourseTab('discussion', discTab);
+    } else if (resourceType === 'live' && resourceUrl) {
+      window.open(resourceUrl, '_blank');
+    } else {
+      window.showToast(`${nodeName} - 内容加载中`, 'info');
+    }
   };
 
   // Tab switching
@@ -552,4 +742,252 @@ export async function renderStudentCourse(id) {
       </div>`;
     }
   };
+}
+
+// ===== 视频播放器初始化（与学习设置同步） =====
+
+function fmtTime(sec) {
+  if (!sec || isNaN(sec)) return '00:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function initVideoPlayer(settings, ctx) {
+  const video = document.getElementById('course-video');
+  const btnPlay = document.getElementById('btn-play');
+  const timeDisplay = document.getElementById('time-display');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressFill = document.getElementById('progress-fill');
+  const speedSelect = document.getElementById('speed-select');
+  const btnVolume = document.getElementById('btn-volume');
+  const btnFullscreen = document.getElementById('btn-fullscreen');
+  if (!video) return;
+
+  const allowFastForward = settings.allow_fast_forward !== '0';
+
+  // 播放/暂停
+  btnPlay.addEventListener('click', () => {
+    if (video.paused) { video.play().catch(() => {}); btnPlay.textContent = '⏸'; }
+    else { video.pause(); btnPlay.textContent = '▶'; }
+  });
+  video.addEventListener('play', () => { btnPlay.textContent = '⏸'; });
+  video.addEventListener('pause', () => { btnPlay.textContent = '▶'; });
+  video.addEventListener('ended', () => { btnPlay.textContent = '🔄'; });
+  video.addEventListener('click', () => {
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+  });
+
+  // 时间显示
+  video.addEventListener('loadedmetadata', () => {
+    timeDisplay.textContent = '00:00 / ' + fmtTime(video.duration);
+  });
+  video.addEventListener('timeupdate', () => {
+    timeDisplay.textContent = fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration);
+    if (video.duration) progressFill.style.width = (video.currentTime / video.duration * 100) + '%';
+  });
+
+  // 进度条点击/拖拽
+  let isDragging = false;
+  function seekFromEvent(e) {
+    if (!allowFastForward) { window.showToast('管理员已禁用快进功能', 'warning'); return; }
+    const rect = progressWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    video.currentTime = pct * video.duration;
+    progressFill.style.width = (pct * 100) + '%';
+  }
+  progressWrap.addEventListener('mousedown', (e) => { isDragging = true; seekFromEvent(e); });
+  document.addEventListener('mousemove', (e) => { if (isDragging) seekFromEvent(e); });
+  document.addEventListener('mouseup', () => { isDragging = false; });
+
+  // 键盘快进拦截
+  video.addEventListener('keydown', (e) => {
+    if (!allowFastForward && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      window.showToast('管理员已禁用快进功能', 'warning');
+    }
+  });
+
+  // 倍速选择器（范围由设置决定）
+  const minSpeed = parseFloat(settings.min_speed) || 1.0;
+  const maxSpeed = parseFloat(settings.max_speed) || 2.0;
+  speedSelect.innerHTML = '';
+  for (let s = minSpeed; s <= maxSpeed + 0.001; s += 0.25) {
+    const sFixed = Math.round(s * 100) / 100;
+    const opt = document.createElement('option');
+    opt.value = sFixed;
+    opt.textContent = sFixed.toFixed(2) + 'x';
+    if (Math.abs(sFixed - 1.0) < 0.001) opt.selected = true;
+    speedSelect.appendChild(opt);
+  }
+  speedSelect.addEventListener('change', () => {
+    video.playbackRate = parseFloat(speedSelect.value);
+  });
+
+  // 音量
+  btnVolume.addEventListener('click', () => {
+    video.muted = !video.muted;
+    btnVolume.textContent = video.muted ? '🔇' : '🔊';
+  });
+  video.addEventListener('volumechange', () => {
+    btnVolume.textContent = video.muted || video.volume === 0 ? '🔇' : '🔊';
+  });
+
+  // 全屏
+  btnFullscreen.addEventListener('click', () => {
+    const container = document.getElementById('video-player-container');
+    if (container) {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else container.requestFullscreen();
+    }
+  });
+  video.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    btnFullscreen.click();
+  });
+
+  // 全局快捷键（仅在视频页生效）
+  document.addEventListener('keydown', (e) => {
+    if (!document.getElementById('course-video')) return;
+    if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+    if (e.code === 'Space') { e.preventDefault(); video.paused ? video.play().catch(()=>{}) : video.pause(); }
+    if (e.code === 'KeyM') { video.muted = !video.muted; }
+    if (e.code === 'KeyF') { btnFullscreen.click(); }
+  });
+}
+
+function initWatermark(settings, user) {
+  let watermarkText = settings.watermark_text;
+  if (!watermarkText) return;
+
+  // 变量替换：{username} {realname} {phone} {userid}
+  if (user) {
+    watermarkText = watermarkText
+      .replace(/{username}/g, user.username || '')
+      .replace(/{realname}/g, user.realname || '')
+      .replace(/{phone}/g, user.phone || '')
+      .replace(/{userid}/g, String(user.id || ''));
+  }
+
+  // 读取颜色和不透明度
+  const colorHex = settings.watermark_color || '#ffffff';
+  const opacity = parseFloat(settings.watermark_opacity) || 0.12;
+  // hex → rgb
+  const r = parseInt(colorHex.slice(1,3), 16);
+  const g = parseInt(colorHex.slice(3,5), 16);
+  const b = parseInt(colorHex.slice(5,7), 16);
+
+  // 全页水印（priority）
+  const globalOverlay = document.getElementById('global-watermark');
+  // 视频水印（兼容旧逻辑）
+  const videoOverlay = document.getElementById('video-watermark');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 320;
+  canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`;
+  ctx.font = '16px "Microsoft YaHei", sans-serif';
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-22 * Math.PI / 180);
+  ctx.textAlign = 'center';
+  // 多行平铺
+  ctx.fillText(watermarkText, 0, 0);
+  ctx.fillText(watermarkText, -160, 40);
+  ctx.fillText(watermarkText, 160, -40);
+  ctx.fillText(watermarkText, 0, 80);
+  ctx.fillText(watermarkText, 0, -80);
+
+  const bgImage = 'url(' + canvas.toDataURL() + ')';
+  if (globalOverlay) {
+    globalOverlay.style.backgroundImage = bgImage;
+    globalOverlay.style.backgroundRepeat = 'repeat';
+    globalOverlay.style.display = 'block';
+  }
+  if (videoOverlay) {
+    videoOverlay.style.backgroundImage = bgImage;
+    videoOverlay.style.backgroundRepeat = 'repeat';
+    videoOverlay.style.display = 'block';
+  }
+}
+
+function initAntiAfk(settings) {
+  const interval = parseInt(settings.anti_afk_interval) || 300;
+  const duration = parseInt(settings.anti_afk_duration) || 10;
+  const video = document.getElementById('course-video');
+  if (!video || interval <= 0) return;
+
+  let afkTimer = null;
+  let countdownTimer = null;
+  let afkModal = null;
+
+  function removeAfkModal() {
+    if (afkModal) { afkModal.remove(); afkModal = null; }
+  }
+
+  function resetAfkTimer() {
+    if (afkTimer) clearTimeout(afkTimer);
+    if (!video.paused) afkTimer = setTimeout(showAfkModal, interval * 1000);
+  }
+
+  function showAfkModal() {
+    if (video.paused) return;
+    let remaining = duration;
+    removeAfkModal();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'afk-modal-overlay';
+    overlay.innerHTML = '<div class="afk-modal"><div class="afk-modal-icon">⏰</div><h3 class="afk-modal-title">确认在线学习</h3><p class="afk-modal-text">系统检测到您长时间未操作，请确认您仍在学习。</p><div class="afk-modal-countdown" id="afk-countdown">' + remaining + ' 秒后自动暂停</div><button class="btn btn-primary" id="afk-continue-btn">继续学习</button></div>';
+    document.body.appendChild(overlay);
+    afkModal = overlay;
+
+    countdownTimer = setInterval(() => {
+      remaining--;
+      const cd = document.getElementById('afk-countdown');
+      if (cd) cd.textContent = remaining + ' 秒后自动暂停';
+      if (remaining <= 0) {
+        clearInterval(countdownTimer);
+        removeAfkModal();
+        video.pause();
+        window.showToast('学习已暂停，请保持互动', 'warning');
+      }
+    }, 1000);
+
+    document.getElementById('afk-continue-btn').addEventListener('click', () => {
+      clearInterval(countdownTimer);
+      removeAfkModal();
+      resetAfkTimer();
+      window.showToast('检测到您仍在学习', 'success');
+    });
+  }
+
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(evt => {
+    document.addEventListener(evt, resetAfkTimer, { passive: true });
+  });
+  video.addEventListener('play', resetAfkTimer);
+  video.addEventListener('pause', () => {
+    if (afkTimer) clearTimeout(afkTimer);
+    if (countdownTimer) clearInterval(countdownTimer);
+    removeAfkModal();
+  });
+  if (!video.paused) resetAfkTimer();
+}
+
+async function initProgressTracking(settings, ctx) {
+  const video = document.getElementById('course-video');
+  if (!video) return;
+  let lastSaveTime = 0;
+  const SAVE_INTERVAL = 10;
+  video.addEventListener('timeupdate', async () => {
+    const now = Date.now();
+    if (now - lastSaveTime < SAVE_INTERVAL * 1000) return;
+    if (!video.duration) return;
+    lastSaveTime = now;
+    const progress = Math.round((video.currentTime / video.duration) * 100);
+    const durationMinutes = Math.round(video.currentTime / 60);
+    try {
+      await api.updateLearningRecord({ user_id: ctx.userId, course_id: ctx.courseId, progress: progress, duration_minutes: durationMinutes });
+    } catch(e) { /* 静默处理，进度追踪不影响学习体验 */ }
+  });
 }

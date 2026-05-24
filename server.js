@@ -70,15 +70,16 @@ app.delete('/api/course-categories/:id', (req, res) => {
 
 // ===== Courses =====
 app.get('/api/courses', (req, res) => {
-  const { category_id, type, limit, q } = req.query;
-  let courses = store.findMany('courses', c => c.status === 'published');
+  const { category_id, type, limit, q, include_draft } = req.query;
+  let courses = store.findMany('courses', c => include_draft === '1' ? true : c.status === 'published');
   if (category_id) courses = courses.filter(c => c.category_id === Number(category_id));
   if (type) courses = courses.filter(c => c.type === type);
   if (q) courses = courses.filter(c => c.title.includes(q));
   courses = courses.map(c => {
     const cat = store.findOne('course_categories', cc => cc.id === c.category_id);
     const teacher = store.findOne('users', u => u.id === c.teacher_id);
-    return { ...c, category_name: cat ? cat.name : '', teacher_name: teacher ? teacher.realname : '' };
+    const courseType = store.findOne('course_types', t => t.id === c.course_type_id);
+    return { ...c, category_name: cat ? cat.name : '', teacher_name: teacher ? teacher.realname : '', course_type_name: courseType ? courseType.name : (c.type === 'live' ? '直播课程' : c.type === 'offline' ? '面授课程' : '录播视频') };
   });
   courses.sort((a, b) => a.sort_order - b.sort_order || new Date(b.created_at) - new Date(a.created_at));
   if (limit) courses = courses.slice(0, Number(limit));
@@ -90,27 +91,137 @@ app.get('/api/courses/:id', (req, res) => {
   if (!c) return res.status(404).json({ error: '课程不存在' });
   const cat = store.findOne('course_categories', cc => cc.id === c.category_id);
   const teacher = store.findOne('users', u => u.id === c.teacher_id);
-  res.json({ ...c, category_name: cat ? cat.name : '', teacher_name: teacher ? teacher.realname : '' });
+  const courseType = store.findOne('course_types', t => t.id === c.course_type_id);
+  res.json({ ...c, category_name: cat ? cat.name : '', teacher_name: teacher ? teacher.realname : '', course_type_name: courseType ? courseType.name : '' });
 });
 
 app.post('/api/courses', (req, res) => {
-  const { title, category_id, teacher_id, type, duration, price, description, status, sort_order, audio, video, materials, trailer, preview } = req.body;
+  const { title, category_id, teacher_id, type, course_type_id, duration, price, description, status, sort_order, trailer, preview } = req.body;
   if (!title) return res.status(400).json({ error: '课程名称不能为空' });
   const id = store.nextId('courses');
-  const course = { id, title, category_id: Number(category_id)||0, teacher_id: Number(teacher_id)||0, type: type||'video', duration: Number(duration)||0, price: Number(price)||0, cover: '', description: description||'', status: status||'published', sort_order: Number(sort_order)||id, audio: audio||[], video: video||[], materials: materials||[], trailer: trailer||'', preview: preview||'', created_at: new Date().toISOString().slice(0,19).replace('T',' ') };
+  const course = { id, title, category_id: Number(category_id)||0, teacher_id: Number(teacher_id)||0, type: type||'video', course_type_id: Number(course_type_id)||1, duration: Number(duration)||0, price: Number(price)||0, cover: '', description: description||'', status: status||'published', sort_order: Number(sort_order)||id, audio: [], video: [], materials: [], trailer: trailer||'', preview: preview||'', created_at: new Date().toISOString().slice(0,19).replace('T',' ') };
   store.insertOne('courses', course);
   res.json(course);
 });
 
 app.put('/api/courses/:id', (req, res) => {
-  const { title, category_id, teacher_id, type, duration, price, description, status, sort_order, audio, video, materials, trailer, preview } = req.body;
-  store.updateOne('courses', c => c.id === Number(req.params.id), { title, category_id: Number(category_id), teacher_id: Number(teacher_id), type, duration: Number(duration), price: Number(price), description, status, sort_order: Number(sort_order), audio: audio||[], video: video||[], materials: materials||[], trailer: trailer||'', preview: preview||'' });
+  const { title, category_id, teacher_id, type, course_type_id, duration, price, description, status, sort_order, trailer, preview } = req.body;
+  const updates = { title, category_id: Number(category_id), teacher_id: Number(teacher_id), type, course_type_id: Number(course_type_id)||1, duration: Number(duration), price: Number(price), description, status, sort_order: Number(sort_order), trailer: trailer||'', preview: preview||'' };
+  store.updateOne('courses', c => c.id === Number(req.params.id), updates);
   res.json({ success: true });
 });
 
 app.delete('/api/courses/:id', (req, res) => {
-  store.deleteMany('courses', c => c.id === Number(req.params.id));
+  const cid = Number(req.params.id);
+  store.deleteMany('courses', c => c.id === cid);
+  // Also delete associated chapters
+  store.deleteMany('course_chapters', ch => ch.course_id === cid);
   res.json({ success: true });
+});
+
+// ===== Course Types =====
+app.get('/api/course-types', (req, res) => {
+  const types = store.findMany('course_types', () => true);
+  types.sort((a, b) => a.sort_order - b.sort_order);
+  res.json(types);
+});
+app.post('/api/course-types', (req, res) => {
+  const { name, sort_order } = req.body;
+  if (!name) return res.status(400).json({ error: '类型名称不能为空' });
+  const id = store.nextId('course_types');
+  const t = { id, name, sort_order: Number(sort_order) || id };
+  store.insertOne('course_types', t);
+  res.json(t);
+});
+app.put('/api/course-types/:id', (req, res) => {
+  const { name, sort_order } = req.body;
+  store.updateOne('course_types', t => t.id === Number(req.params.id), { name, sort_order: Number(sort_order) });
+  res.json({ success: true });
+});
+app.delete('/api/course-types/:id', (req, res) => {
+  store.deleteMany('course_types', t => t.id === Number(req.params.id));
+  res.json({ success: true });
+});
+
+// ===== Course Chapters (tree) =====
+// Helper: build tree from flat list
+function buildChapterTree(flat) {
+  const map = {};
+  flat.forEach(n => { map[n.id] = { ...n, children: [] }; });
+  const roots = [];
+  flat.forEach(n => {
+    if (n.parent_id === 0) roots.push(map[n.id]);
+    else if (map[n.parent_id]) map[n.parent_id].children.push(map[n.id]);
+  });
+  const sortChildren = (nodes) => {
+    nodes.sort((a, b) => a.sort_order - b.sort_order);
+    nodes.forEach(n => sortChildren(n.children));
+  };
+  sortChildren(roots);
+  return roots;
+}
+
+app.get('/api/courses/:id/chapters', (req, res) => {
+  const cid = Number(req.params.id);
+  const flat = store.findMany('course_chapters', ch => ch.course_id === cid);
+  res.json(buildChapterTree(flat));
+});
+
+app.post('/api/courses/:id/chapters', (req, res) => {
+  const cid = Number(req.params.id);
+  const { parent_id, name, sort_order, resource_type, resource_url, resource_name, duration_minutes, is_free_preview, extra } = req.body;
+  if (!name) return res.status(400).json({ error: '章节名称不能为空' });
+  const id = store.nextId('course_chapters');
+  const ch = { id, course_id: cid, parent_id: Number(parent_id)||0, name, sort_order: Number(sort_order)||id, resource_type: resource_type||'folder', resource_url: resource_url||'', resource_name: resource_name||'', duration_minutes: Number(duration_minutes)||0, is_free_preview: !!is_free_preview, extra: extra||'', created_at: new Date().toISOString().slice(0,19).replace('T',' ') };
+  store.insertOne('course_chapters', ch);
+  res.json(ch);
+});
+
+app.put('/api/courses/:id/chapters/:cid', (req, res) => {
+  const { parent_id, name, sort_order, resource_type, resource_url, resource_name, duration_minutes, is_free_preview, extra } = req.body;
+  store.updateOne('course_chapters', ch => ch.id === Number(req.params.cid), { parent_id: Number(parent_id)||0, name, sort_order: Number(sort_order)||0, resource_type: resource_type||'folder', resource_url: resource_url||'', resource_name: resource_name||'', duration_minutes: Number(duration_minutes)||0, is_free_preview: !!is_free_preview, extra: extra||'' });
+  res.json({ success: true });
+});
+
+app.delete('/api/courses/:id/chapters/:cid', (req, res) => {
+  const chId = Number(req.params.cid);
+  // Recursively collect all descendant ids
+  function collectIds(id) {
+    const ids = [id];
+    store.findMany('course_chapters', ch => ch.parent_id === id).forEach(ch => ids.push(...collectIds(ch.id)));
+    return ids;
+  }
+  const toDelete = new Set(collectIds(chId));
+  store.deleteMany('course_chapters', ch => toDelete.has(ch.id));
+  res.json({ success: true });
+});
+
+// Batch save entire chapter tree (replaces all chapters for a course)
+app.put('/api/courses/:id/chapters', (req, res) => {
+  const cid = Number(req.params.id);
+  const { chapters } = req.body; // flat array of chapters with temp ids
+  if (!Array.isArray(chapters)) return res.status(400).json({ error: 'chapters must be array' });
+  // Delete all existing chapters for this course
+  store.deleteMany('course_chapters', ch => ch.course_id === cid);
+  // Re-insert with new ids (preserve client-side id mapping for parent_id resolution)
+  const idMap = {}; // oldId -> newId
+  const toInsert = [];
+  // Sort by sort_order to maintain hierarchy
+  chapters.sort((a, b) => a.sort_order - b.sort_order);
+  chapters.forEach(ch => {
+    const newId = store.nextId('course_chapters');
+    idMap[ch.id] = newId;
+    toInsert.push({ ...ch, id: newId, course_id: cid });
+  });
+  // Fix parent_ids using id map
+  toInsert.forEach(ch => {
+    if (ch.parent_id && ch.parent_id !== 0 && idMap[ch.parent_id]) {
+      ch.parent_id = idMap[ch.parent_id];
+    }
+  });
+  toInsert.forEach(ch => store.insertOne('course_chapters', ch));
+  const flat = store.findMany('course_chapters', ch => ch.course_id === cid);
+  res.json({ success: true, chapters: buildChapterTree(flat) });
 });
 
 // ===== Notifications =====
@@ -178,6 +289,26 @@ app.get('/api/users', (req, res) => {
   res.json(users);
 });
 
+// Enhanced user search for recipient selection (must be before /api/users/:id)
+app.get('/api/users/search', (req, res) => {
+  const { q, role, org_id, status, limit } = req.query;
+  let users = store.findMany('users', () => true);
+  if (q) {
+    const kw = q.toLowerCase();
+    users = users.filter(u =>
+      (u.username||'').toLowerCase().includes(kw) ||
+      (u.realname||'').toLowerCase().includes(kw) ||
+      (u.phone||'').includes(kw)
+    );
+  }
+  if (role) users = users.filter(u => u.role === role);
+  if (org_id) users = users.filter(u => u.org_id === Number(org_id));
+  if (status) users = users.filter(u => u.status === status);
+  users.sort((a, b) => a.id - b.id);
+  if (limit) users = users.slice(0, Number(limit));
+  res.json(users.map(u => ({ id: u.id, username: u.username, realname: u.realname, phone: u.phone, email: u.email, role: u.role, org_id: u.org_id, org_name: u.org_name, status: u.status })));
+});
+
 app.get('/api/users/:id', (req, res) => {
   const u = store.findOne('users', u => u.id === Number(req.params.id));
   if (!u) return res.json({});
@@ -215,10 +346,50 @@ app.get('/api/orders/:id', (req, res) => {
 });
 
 app.post('/api/orders', (req, res) => {
-  const { user_id, course_id, amount, pay_method } = req.body;
+  const { user_id, course_id, amount, pay_method, registration_data } = req.body;
   const id = store.nextId('orders');
-  store.insertOne('orders', { id, user_id, course_id, amount: amount || 0, status: 'paid', pay_method: pay_method || 'wechat', created_at: new Date().toISOString().slice(0, 19).replace('T', ' ') });
+  const user = store.findOne('users', u => u.id === user_id);
+  store.insertOne('orders', {
+    id, user_id, course_id, amount: amount || 0, status: 'paid', pay_method: pay_method || 'wechat',
+    registration_data: registration_data || null,
+    user_name: user ? user.realname : '',
+    created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  });
   res.json({ id });
+});
+
+// ===== Class Enrollment =====
+app.post('/api/class-enroll', (req, res) => {
+  const { user_id, class_id, amount, pay_method, registration_data } = req.body;
+  if (!user_id || !class_id) return res.status(400).json({ error: '缺少user_id或class_id' });
+  const cls = store.findOne('classes', c => c.id === Number(class_id));
+  if (!cls) return res.status(404).json({ error: '班级不存在' });
+  const user = store.findOne('users', u => u.id === user_id);
+
+  // Add student to class if not already
+  if (!cls.student_ids) cls.student_ids = [];
+  if (!cls.student_ids.includes(Number(user_id))) {
+    cls.student_ids.push(Number(user_id));
+    store.saveData();
+  }
+
+  // Create orders for each course in the class
+  const orderIds = [];
+  const courses = cls.course_ids || [];
+  courses.forEach(cid => {
+    const course = store.findOne('courses', c => c.id === cid);
+    const id = store.nextId('orders');
+    store.insertOne('orders', {
+      id, user_id, course_id: cid, class_id: Number(class_id),
+      amount: 0, // class fee handled separately or total amount
+      status: 'paid', pay_method: pay_method || 'wechat',
+      registration_data: registration_data || null,
+      user_name: user ? user.realname : '',
+      created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    });
+    orderIds.push(id);
+  });
+  res.json({ success: true, order_ids: orderIds, student_added: true });
 });
 
 // ===== Certificates =====
@@ -394,6 +565,33 @@ app.get('/api/learning-records', (req, res) => {
   });
   records.sort((a, b) => new Date(b.last_study_at) - new Date(a.last_study_at));
   res.json(records);
+});
+
+app.post('/api/learning-records', (req, res) => {
+  const { user_id, course_id, progress, duration_minutes } = req.body;
+  if (!user_id || !course_id) return res.status(400).json({ error: '缺少user_id或course_id' });
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const exist = store.findOne('learning_records', r => r.user_id === user_id && r.course_id === course_id);
+  if (exist) {
+    const updates = { last_study_at: now };
+    if (progress !== undefined) updates.progress = Math.min(100, Math.max(0, Number(progress)));
+    if (duration_minutes !== undefined) updates.duration_minutes = Number(duration_minutes);
+    if (updates.progress >= 100) updates.status = 'completed';
+    store.updateOne('learning_records', r => r.user_id === user_id && r.course_id === course_id, updates);
+    const updated = store.findOne('learning_records', r => r.user_id === user_id && r.course_id === course_id);
+    return res.json(updated);
+  }
+  const newRecord = {
+    id: store.nextId('learning_records'),
+    user_id, course_id,
+    progress: Math.min(100, Math.max(0, Number(progress || 0))),
+    duration_minutes: Number(duration_minutes || 0),
+    status: 'learning',
+    started_at: now,
+    last_study_at: now
+  };
+  store.insertOne('learning_records', newRecord);
+  res.json(newRecord);
 });
 
 app.get('/api/settings', (req, res) => {
@@ -730,6 +928,164 @@ app.delete('/api/upload', (req, res) => {
   } else {
     res.json({ success: true }); // File may not exist, that's ok
   }
+});
+
+// ===== Message Center =====
+// Get message config
+app.get('/api/message-config', (req, res) => {
+  res.json(store.data().message_config || {});
+});
+
+// Save message config (full replace)
+app.post('/api/message-config', (req, res) => {
+  const data = store.data();
+  data.message_config = req.body;
+  store.saveData();
+  res.json({ success: true });
+});
+
+// List message queues
+app.get('/api/message-queues', (req, res) => {
+  const { status, q } = req.query;
+  let items = store.findMany('message_queues', () => true);
+  if (status) items = items.filter(m => m.status === status);
+  if (q) {
+    const kw = q.toLowerCase();
+    items = items.filter(m => (m.title||'').toLowerCase().includes(kw) || (m.content||'').toLowerCase().includes(kw));
+  }
+  items.sort((a, b) => (b.id || 0) - (a.id || 0));
+  res.json(items);
+});
+
+// Get single message queue
+app.get('/api/message-queues/:id', (req, res) => {
+  const m = store.findOne('message_queues', m => m.id === Number(req.params.id));
+  if (!m) return res.status(404).json({ error: '消息不存在' });
+  // Enrich with user names
+  if (m.send_results && m.send_results.length) {
+    m.send_results = m.send_results.map(r => {
+      const u = store.findOne('users', u => u.id === r.user_id);
+      return { ...r, user_name: u ? u.realname : '未知用户', user_phone: u ? u.phone : '' };
+    });
+  }
+  res.json(m);
+});
+
+// Create message queue
+app.post('/api/message-queues', (req, res) => {
+  const { title, content, template_id, push_methods, target_user_ids, strategy, strategy_rule, scheduled_at } = req.body;
+  if (!title || !content) return res.status(400).json({ error: '标题和内容不能为空' });
+  if (!target_user_ids || !target_user_ids.length) return res.status(400).json({ error: '至少选择一个收件人' });
+  if (!push_methods || !push_methods.length) return res.status(400).json({ error: '至少选择一种推送方式' });
+
+  const id = store.nextId('message_queues');
+  const msg = {
+    id, title, content, template_id: template_id || null,
+    push_methods: push_methods || [],
+    target_type: 'manual',
+    target_user_ids: target_user_ids || [],
+    target_filter: null,
+    status: scheduled_at ? 'pending' : 'sending',
+    strategy: strategy || 'once',
+    strategy_rule: strategy_rule || null,
+    scheduled_at: scheduled_at || null,
+    sent_at: null,
+    total_count: (target_user_ids || []).length * (push_methods || []).length,
+    sent_count: 0,
+    failed_count: 0,
+    read_count: 0,
+    send_results: [],
+    created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  };
+
+  // If immediate send, simulate sending
+  if (!scheduled_at) {
+    const results = [];
+    let sent = 0, failed = 0;
+    (target_user_ids || []).forEach(uid => {
+      (push_methods || []).forEach(method => {
+        const ok = Math.random() > 0.05; // 95% success rate simulation
+        results.push({
+          user_id: uid, method, status: ok ? 'sent' : 'failed',
+          sent_at: ok ? msg.created_at : null,
+          error: ok ? null : '模拟发送失败: 网络超时'
+        });
+        if (ok) sent++; else failed++;
+      });
+    });
+    msg.send_results = results;
+    msg.sent_count = sent;
+    msg.failed_count = failed;
+    msg.status = failed === 0 ? 'sent' : (sent > 0 ? 'partial' : 'failed');
+    msg.sent_at = msg.created_at;
+  }
+
+  store.insertOne('message_queues', msg);
+  res.json(msg);
+});
+
+// Execute send for a pending message
+app.post('/api/message-queues/:id/send', (req, res) => {
+  const msg = store.findOne('message_queues', m => m.id === Number(req.params.id));
+  if (!msg) return res.status(404).json({ error: '消息不存在' });
+  if (msg.status !== 'pending') return res.status(400).json({ error: '消息状态不允许发送' });
+
+  const results = [];
+  let sent = 0, failed = 0;
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  (msg.target_user_ids || []).forEach(uid => {
+    (msg.push_methods || []).forEach(method => {
+      const ok = Math.random() > 0.05;
+      results.push({
+        user_id: uid, method, status: ok ? 'sent' : 'failed',
+        sent_at: ok ? now : null,
+        error: ok ? null : '模拟发送失败: 服务不可用'
+      });
+      if (ok) sent++; else failed++;
+    });
+  });
+  store.updateOne('message_queues', m => m.id === Number(req.params.id), {
+    send_results: results,
+    sent_count: sent,
+    failed_count: failed,
+    status: failed === 0 ? 'sent' : (sent > 0 ? 'partial' : 'failed'),
+    sent_at: now
+  });
+  res.json({ success: true, sent_count: sent, failed_count: failed });
+});
+
+// Update message queue (only pending messages)
+app.put('/api/message-queues/:id', (req, res) => {
+  const msg = store.findOne('message_queues', m => m.id === Number(req.params.id));
+  if (!msg) return res.status(404).json({ error: '消息不存在' });
+  if (msg.status !== 'pending') return res.status(400).json({ error: '仅可修改待发送的消息' });
+  const { title, content, push_methods, target_user_ids, scheduled_at, strategy, strategy_rule } = req.body;
+  store.updateOne('message_queues', m => m.id === Number(req.params.id), {
+    title, content, push_methods, target_user_ids, scheduled_at, strategy, strategy_rule
+  });
+  res.json({ success: true });
+});
+
+// Delete / Cancel message queue
+app.delete('/api/message-queues/:id', (req, res) => {
+  store.deleteMany('message_queues', m => m.id === Number(req.params.id));
+  res.json({ success: true });
+});
+
+// Get delivery detail for a message
+app.get('/api/message-queues/:id/delivery', (req, res) => {
+  const msg = store.findOne('message_queues', m => m.id === Number(req.params.id));
+  if (!msg) return res.status(404).json({ error: '消息不存在' });
+  const results = (msg.send_results || []).map(r => {
+    const u = store.findOne('users', u => u.id === r.user_id);
+    return { ...r, user_name: u ? u.realname : '未知用户', user_phone: u ? u.phone : '', user_role: u ? u.role : '' };
+  });
+  res.json({
+    id: msg.id, title: msg.title, status: msg.status,
+    total_count: msg.total_count, sent_count: msg.sent_count, failed_count: msg.failed_count, read_count: msg.read_count,
+    push_methods: msg.push_methods, scheduled_at: msg.scheduled_at, sent_at: msg.sent_at,
+    results
+  });
 });
 
 // SPA catch-all

@@ -13,39 +13,44 @@ echo.
 :: ---- Auto-detect Node.js (no PATH dependency) ----
 set "NODE_EXE="
 
-:: 1. Trae IDE bundled Node.js (highest priority — reliable absolute path)
+:: 1. Trae IDE bundled Node.js (highest priority)
 if exist "%USERPROFILE%\.trae-cn\binaries\node\versions\24.15.0\node.exe" (
-    set "NODE_EXE=%USERPROFILE%\.trae-cn\binaries\node\versions\24.15.0\node.exe"
-    goto :found_node
+  set "NODE_EXE=%USERPROFILE%\.trae-cn\binaries\node\versions\24.15.0\node.exe"
+  goto :found_node
 )
 if exist "%USERPROFILE%\.trae\binaries\node\versions\24.15.0\node.exe" (
-    set "NODE_EXE=%USERPROFILE%\.trae\binaries\node\versions\24.15.0\node.exe"
-    goto :found_node
+  set "NODE_EXE=%USERPROFILE%\.trae\binaries\node\versions\24.15.0\node.exe"
+  goto :found_node
 )
 
-:: 2. WorkBuddy bundled Node.js
-if exist "%USERPROFILE%\.workbuddy\binaries\node\versions\24.15.0\node.exe" (
-    set "NODE_EXE=%USERPROFILE%\.workbuddy\binaries\node\versions\24.15.0\node.exe"
-    goto :found_node
+:: 2. WorkBuddy bundled Node.js (auto-detect any version subfolder)
+if exist "%USERPROFILE%\.workbuddy\binaries\node\versions" (
+  for /d %%D in ("%USERPROFILE%\.workbuddy\binaries\node\versions\*") do (
+    if exist "%%D\node.exe" (
+      set "NODE_EXE=%%D\node.exe"
+      goto :found_node
+    )
+  )
 )
 
 :: 3. Standard install locations
 if exist "%ProgramFiles%\nodejs\node.exe" (
-    set "NODE_EXE=%ProgramFiles%\nodejs\node.exe"
-    goto :found_node
+  set "NODE_EXE=%ProgramFiles%\nodejs\node.exe"
+  goto :found_node
 )
 if exist "%ProgramFiles(x86)%\nodejs\node.exe" (
-    set "NODE_EXE=%ProgramFiles(x86)%\nodejs\node.exe"
-    goto :found_node
+  set "NODE_EXE=%ProgramFiles(x86)%\nodejs\node.exe"
+  goto :found_node
 )
 if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" (
-    set "NODE_EXE=%LOCALAPPDATA%\Programs\nodejs\node.exe"
-    goto :found_node
+  set "NODE_EXE=%LOCALAPPDATA%\Programs\nodejs\node.exe"
+  goto :found_node
 )
 
 :: 4. nvm managed versions (each as separate if, no for loop)
 if exist "%APPDATA%\nvm\v24.15.0\node.exe" ( set "NODE_EXE=%APPDATA%\nvm\v24.15.0\node.exe" & goto :found_node )
 if exist "%APPDATA%\nvm\v22.14.0\node.exe" ( set "NODE_EXE=%APPDATA%\nvm\v22.14.0\node.exe" & goto :found_node )
+if exist "%APPDATA%\nvm\v22.12.0\node.exe" ( set "NODE_EXE=%APPDATA%\nvm\v22.12.0\node.exe" & goto :found_node )
 if exist "%APPDATA%\nvm\v20.19.0\node.exe" ( set "NODE_EXE=%APPDATA%\nvm\v20.19.0\node.exe" & goto :found_node )
 if exist "%APPDATA%\nvm\v18.20.0\node.exe" ( set "NODE_EXE=%APPDATA%\nvm\v18.20.0\node.exe" & goto :found_node )
 
@@ -66,6 +71,8 @@ pause
 exit /b 1
 
 :found_node
+:: Clear NODE_OPTIONS to avoid --use-system-ca incompatibility with Node v22+
+set "NODE_OPTIONS="
 echo [INFO] Using Node.js: %NODE_EXE%
 "%NODE_EXE%" --version
 echo.

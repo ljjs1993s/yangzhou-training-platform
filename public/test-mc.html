@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>MC Test</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app-main"></div>
+<script type="module">
+const main = document.getElementById('app-main');
+main.innerHTML = '<div class="admin-content"></div>';
+
+try {
+  const { renderMessageCenter } = await import('./js/modules/message-center.js');
+  console.log('Module loaded successfully');
+  await renderMessageCenter();
+  console.log('Render complete');
+} catch(e) {
+  console.error('Error:', e);
+  main.innerHTML = '<h1>Error: ' + e.message + '</h1><pre>' + e.stack + '</pre>';
+}
+</script>
+</body>
+</html>

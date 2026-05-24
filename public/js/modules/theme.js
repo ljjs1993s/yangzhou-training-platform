@@ -79,51 +79,63 @@ export function applyTheme(settings) {
     });
   }
 
-  // 2. 应用自定义颜色（覆盖预设）
-  // 自定义颜色为空时使用预设主题色，非空时用自定义值覆盖
-
+  // 2. 应用自定义颜色（仅在 custom_colors_active 开关开启时覆盖预设）
+  const customActive = settings.custom_colors_active === 'true';
   const presetBg = preset ? preset['--color-primary'] : '#1E4D8C';
   const presetAccent = preset ? preset['--color-accent'] : '#C8842A';
   const presetAccentLight = preset ? preset['--color-accent-light'] : '#E8A84C';
 
-  // 2a. 头部背景颜色 → 控制 header 背景 + hero 渐变
-  const headerBg = (settings.header_bg_color || '').trim();
-  if (headerBg) {
-    root.style.setProperty('--header-bg-color', headerBg);
-    root.style.setProperty('--color-primary-dark', darkenColor(headerBg, 20));
-    root.style.setProperty('--color-primary-light', lightenColor(headerBg, 20));
-    root.style.setProperty('--color-primary-bg', lightenColor(headerBg, 85));
+  if (customActive) {
+    // 2a. 头部背景颜色 → 控制 header 背景 + hero 渐变
+    const headerBg = (settings.header_bg_color || '').trim();
+    if (headerBg) {
+      root.style.setProperty('--header-bg-color', headerBg);
+      root.style.setProperty('--color-primary-dark', darkenColor(headerBg, 20));
+      root.style.setProperty('--color-primary-light', lightenColor(headerBg, 20));
+      root.style.setProperty('--color-primary-bg', lightenColor(headerBg, 85));
+    } else {
+      root.style.setProperty('--header-bg-color', presetBg);
+    }
+    // 2b. 头部文字颜色
+    const headerText = (settings.header_text_color || '').trim();
+    if (headerText) {
+      root.style.setProperty('--header-text-color', headerText);
+    } else {
+      root.style.setProperty('--header-text-color', '#ffffff');
+    }
+    // 2c. 按钮背景色 → 控制 .btn-primary 和 .btn-accent 的背景
+    const btnBg = (settings.btn_bg_color || '').trim();
+    if (btnBg) {
+      root.style.setProperty('--color-primary', btnBg);
+      root.style.setProperty('--color-accent', btnBg);
+    } else {
+      root.style.setProperty('--color-primary', presetBg);
+      root.style.setProperty('--color-accent', presetAccent);
+    }
+    // 2d. 按钮悬停背景色
+    const btnHover = (settings.btn_hover_color || '').trim();
+    if (btnHover) {
+      root.style.setProperty('--btn-hover-color', btnHover);
+    } else {
+      root.style.setProperty('--btn-hover-color', lightenColor(presetAccent, 15));
+    }
+    // 2e. 头部分割线颜色
+    const headerLine = (settings.header_line_color || '').trim();
+    if (headerLine) {
+      root.style.setProperty('--header-line-color', headerLine);
+    } else {
+      root.style.setProperty('--header-line-color', 'rgba(255,255,255,0.15)');
+    }
   } else {
+    // 自定义颜色关闭 → 全部使用预设主题默认值
     root.style.setProperty('--header-bg-color', presetBg);
-  }
-  // 2b. 头部文字颜色
-  const headerText = (settings.header_text_color || '').trim();
-  if (headerText) {
-    root.style.setProperty('--header-text-color', headerText);
-  } else {
+    root.style.setProperty('--color-primary-dark', darkenColor(presetBg, 20));
+    root.style.setProperty('--color-primary-light', lightenColor(presetBg, 20));
+    root.style.setProperty('--color-primary-bg', lightenColor(presetBg, 85));
     root.style.setProperty('--header-text-color', '#ffffff');
-  }
-  // 2c. 按钮背景色 → 控制 .btn-primary 和 .btn-accent 的背景
-  const btnBg = (settings.btn_bg_color || '').trim();
-  if (btnBg) {
-    root.style.setProperty('--color-primary', btnBg);
-    root.style.setProperty('--color-accent', btnBg);
-  } else {
     root.style.setProperty('--color-primary', presetBg);
     root.style.setProperty('--color-accent', presetAccent);
-  }
-  // 2d. 按钮悬停背景色
-  const btnHover = (settings.btn_hover_color || '').trim();
-  if (btnHover) {
-    root.style.setProperty('--btn-hover-color', btnHover);
-  } else {
     root.style.setProperty('--btn-hover-color', lightenColor(presetAccent, 15));
-  }
-  // 2e. 头部分割线颜色
-  const headerLine = (settings.header_line_color || '').trim();
-  if (headerLine) {
-    root.style.setProperty('--header-line-color', headerLine);
-  } else {
     root.style.setProperty('--header-line-color', 'rgba(255,255,255,0.15)');
   }
 

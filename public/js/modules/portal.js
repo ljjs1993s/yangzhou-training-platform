@@ -55,7 +55,9 @@ export async function renderPortal() {
     try { siteSettings = await api.getSettings(); } catch(e) {}
   }
 
-  try { courses = await api.getCourses({ limit: 20 }); if (!courses || !courses.length) courses = fallbackCourses; } catch(e) { console.warn('portal: courses fallback', e); }
+  const homeCourseCount = parseInt(siteSettings.home_course_count) || 12;
+  const displayMode = siteSettings.home_display_mode || 'course_list';
+  try { courses = await api.getCourses({ limit: Math.max(homeCourseCount * 3, 30) }); if (!courses || !courses.length) courses = fallbackCourses; } catch(e) { console.warn('portal: courses fallback', e); }
   // Load media data for courses (batch in parallel)
   try {
     const mediaResults = await Promise.all(courses.map(c => api.getCourseMedia(c.id).catch(() => null)));
@@ -201,15 +203,133 @@ export async function renderPortal() {
     `;
   }
 
+  /* ---------- Helper: task list course item (compact row) ---------- */
+  function courseTaskItem(c) {
+    const typeLabel = c.type === 'live' ? '直播' : c.type === 'offline' ? '面授' : '录播';
+    const typeCls = c.type === 'live' ? 'tag-live' : c.type === 'offline' ? 'tag-offline' : 'tag-video';
+    const priceHtml = c.price === 0
+      ? '<span class="badge badge-success" style="font-size:0.8rem">免费</span>'
+      : `<span class="badge badge-warning" style="font-size:0.8rem">¥${c.price}</span>`;
+
+    const hasVideo = (c.video && c.video.length > 0);
+    const hasAudio = (c.audio && c.audio.length > 0);
+    const hasMaterials = (c.materials && c.materials.length > 0);
+    const hasTrailer = c.trailer && c.trailer.length > 0;
+    const hasPreview = c.preview && c.preview.length > 0;
+
+    let mediaIcons = [];
+    if (hasVideo) mediaIcons.push(`<span class="task-media-icon" title="视频">🎬${c.video.length}</span>`);
+    if (hasAudio) mediaIcons.push(`<span class="task-media-icon" title="音频">🎵${c.audio.length}</span>`);
+    if (hasMaterials) mediaIcons.push(`<span class="task-media-icon" title="资料">📁${c.materials.length}</span>`);
+    if (hasTrailer) mediaIcons.push(`<span class="task-media-icon" title="片花">🎞️</span>`);
+    if (hasPreview) mediaIcons.push(`<span class="task-media-icon" title="试看">👁️</span>`);
+
+    const previewBtn = hasPreview
+      ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showCoursePreview(${c.id})">试看</button>`
+      : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();portalViewCourse(${c.id})">预览</button>`;
+
+    return `
+      <div class="course-task-item" onclick="portalViewCourse(${c.id})">
+        <div class="course-task-main">
+          <span class="course-task-type ${typeCls}">${typeLabel}</span>
+          <span class="course-task-title" title="${window.escapeHtml(c.title)}">${window.escapeHtml(c.title)}</span>
+          ${c.category_name ? `<span class="badge badge-sm">${window.escapeHtml(c.category_name)}</span>` : ''}
+          ${mediaIcons.length ? `<span class="course-task-media">${mediaIcons.join('')}</span>` : ''}
+        </div>
+        <div class="course-task-meta">
+          <span>👤 ${window.escapeHtml(c.teacher_name || '特聘教师')}</span>
+          <span>⏱ ${c.duration}学时</span>
+        </div>
+        <div class="course-task-actions">
+          ${priceHtml}
+          <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();handlePortalEnroll(${c.id},${c.price})">报名</button>
+          ${previewBtn}
+        </div>
+      </div>
+    `;
+  }
+
+  /* ---------- Helper: render courses based on display mode ---------- */
+  function renderCourseItems(courseList) {
+    if (!courseList || !courseList.length) return '<div class="empty-state"><p>暂无课程</p></div>';
+    return displayMode === 'task_list' && courseList.length > 0
+      ? `<div class="course-task-list">${courseList.map(courseTaskItem).join('')}</div>`
+      : `<div class="course-grid">${courseList.map(courseCard).join('')}</div>`;
+  }
+
+  /* ---------- Helper: group courses by category for class mode ---------- */
+  function renderClassCoursesByCategory(clsCourses, classId) {
+    if (!clsCourses || !clsCourses.length) return '<div class="empty-state"><p>暂未分配课程</p></div>';
+    // Group by category
+    const grouped = {};
+    clsCourses.forEach(c => {
+      const catName = c.category_name || '未分类';
+      if (!grouped[catName]) grouped[catName] = [];
+      grouped[catName].push(c);
+    });
+    const catNames = Object.keys(grouped);
+    if (catNames.length <= 1) {
+      // Single category - just render courses directly
+      return renderCourseItems(clsCourses);
+    }
+    // Multiple categories - render with category tabs (IDs scoped by classId)
+    const prefix = 'cat-' + classId + '-';
+    return `<div class="class-category-tabs">
+      <div class="category-tab-bar">
+        ${catNames.map((cat, i) => `<button class="category-tab-btn ${i===0?'active':''}" onclick="event.stopPropagation();window.switchClassCategory(this,'${prefix}${i}')">${window.escapeHtml(cat)}<span class="cat-count">${grouped[cat].length}</span></button>`).join('')}
+      </div>
+      ${catNames.map((cat, i) => `<div class="category-course-panel" id="${prefix}${i}" style="${i===0?'':'display:none'}">${renderCourseItems(grouped[cat])}</div>`).join('')}
+    </div>`;
+  }
+
+  /* ---------- Helper: render class card with categorized courses ---------- */
+  function renderClassCard(cls) {
+    const clsCourses = (cls.courses || []).filter(c => c && c.id);
+    const courseCount = clsCourses.length;
+    if (!courseCount) return '';
+    const enrollmentBtn = clsCourses.length > 0
+      ? `<button class="btn btn-accent btn-sm" onclick="event.stopPropagation();window.handlePortalEnroll(${clsCourses[0].id},${clsCourses[0].price||0},${cls.id})">📝 班级报名</button>`
+      : '';
+    return `<div class="class-card">
+      <div class="class-card-header">
+        <div class="class-card-info">
+          <span class="class-card-icon">🏫</span>
+          <div>
+            <h3 class="class-card-name">${window.escapeHtml(cls.name)}</h3>
+            <div class="class-card-meta">
+              <span>📅 ${cls.start_date || ''} ~ ${cls.end_date || ''}</span>
+              <span>👥 ${(cls.student_ids || []).length} 名学员</span>
+              <span class="class-course-count">📚 ${courseCount} 门课程</span>
+            </div>
+          </div>
+        </div>
+        ${enrollmentBtn}
+      </div>
+      ${cls.description ? `<p class="class-card-desc">${window.escapeHtml(cls.description)}</p>` : ''}
+      ${renderClassCoursesByCategory(clsCourses, cls.id)}
+    </div>`;
+  }
+
+  // Category tab switcher for class mode (must be on window for onclick)
+  window.switchClassCategory = (btn, panelId) => {
+    const wrapper = btn.closest('.class-category-tabs');
+    if (!wrapper) return;
+    wrapper.querySelectorAll('.category-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wrapper.querySelectorAll('.category-course-panel').forEach(p => p.style.display = 'none');
+    const panel = document.getElementById(panelId);
+    if (panel) panel.style.display = '';
+  };
+
   /* ---------- Dashboard Stats ---------- */
   try { dashboardStats = await api.getDashboardOverview(); } catch(e) {}
   const statStudents = dashboardStats?.total_students || '2,856';
   const statCourses  = dashboardStats?.total_courses || '48';
   const statCerts    = dashboardStats?.total_certificates || '1,253';
   const statRate     = dashboardStats?.satisfaction_rate || '99.2%';
-  const hotCourses    = courses.slice(0, 6);
-  const newestCourses = courses.slice(6, 12);
-  const freeCourses   = courses.filter(c => c.price === 0).slice(0, 6);
+  const hotCourses    = courses.slice(0, homeCourseCount);
+  const newestCourses = courses.slice(homeCourseCount, homeCourseCount * 2);
+  const freeCourses   = courses.filter(c => c.price === 0).slice(0, homeCourseCount);
 
   /* ---------- FAQs (from API) ---------- */
   const defaultFaqs = [
@@ -274,7 +394,7 @@ export async function renderPortal() {
     </section>
 
     <!-- ===== MAIN CONTENT ===== -->
-    <div class="portal-main ${siteTemplate === '现代卡片' ? 'portal-modern' : siteTemplate === '简约列表' ? 'portal-minimal' : 'portal-classic'}">
+    <div class="portal-main" data-template="${siteTemplate}">
       <div class="portal-content">
 
         <!-- Notifications Section -->
@@ -294,24 +414,13 @@ export async function renderPortal() {
         <!-- Hot Courses -->
         <section class="portal-section">
           <div class="section-header">
-            <h2 class="section-title">${learningMode === 'class' ? '班级课程' : '热门课程'}</h2>
+            <h2 class="section-title">${learningMode === 'class' ? '班级课程（共 ' + allClasses.filter(c=>c.status==='active').length + ' 个班级）' : '热门课程（共 ' + hotCourses.length + ' 门）'}</h2>
             <a href="javascript:void(0)" class="section-more" onclick="portalShowAllCourses()">更多课程 ›</a>
           </div>
           ${learningMode === 'class' && allClasses.length > 0
-            ? allClasses.filter(cls => cls.status === 'active').map(cls => {
-                const clsCourses = (cls.courses || []).filter(c => c && c.id);
-                if (!clsCourses.length) return '';
-                return '<div style="margin-bottom:36px">' +
-                  '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid var(--color-primary)">' +
-                  '<span style="font-size:1.5rem">🏫</span>' +
-                  '<h3 style="margin:0;font-size:1.15rem;color:var(--color-primary)">' + window.escapeHtml(cls.name) + '</h3>' +
-                  '<span class="badge badge-sm">' + (cls.start_date || '') + ' ~ ' + (cls.end_date || '') + '</span>' +
-                  '<span class="badge badge-sm badge-info">' + (cls.student_ids || []).length + ' 名学员</span>' +
-                  '</div>' +
-                  '<div class="course-grid">' + clsCourses.map(courseCard).join('') + '</div>' +
-                  '</div>';
-              }).join('') || '<div class="empty-state"><div class="empty-icon">🏫</div><h4>暂无活跃班级</h4><p>请联系管理员创建培训班级</p></div>'
-            : '<div class="course-grid">' + hotCourses.map(courseCard).join('') + '</div>'}
+            ? allClasses.filter(cls => cls.status === 'active').map(cls => renderClassCard(cls)).join('')
+              || '<div class="empty-state"><div class="empty-icon">🏫</div><h4>暂无活跃班级</h4><p>请联系管理员创建培训班级</p></div>'
+            : renderCourseItems(hotCourses)}
         </section>
 
         <!-- Newest Courses (hidden in class mode) -->
@@ -320,7 +429,7 @@ export async function renderPortal() {
           <div class="section-header">
             <h2 class="section-title">最新上线</h2>
           </div>
-          <div class="course-grid">${newestCourses.map(courseCard).join('')}</div>
+          ${renderCourseItems(newestCourses)}
         </section>` : ''}
 
         <!-- Free Courses -->
@@ -329,7 +438,7 @@ export async function renderPortal() {
           <div class="section-header">
             <h2 class="section-title">免费课程</h2>
           </div>
-          <div class="course-grid">${freeCourses.map(courseCard).join('')}</div>
+          ${renderCourseItems(freeCourses)}
         </section>` : ''}
 
         <!-- All Courses (hidden by default) -->
@@ -353,7 +462,7 @@ export async function renderPortal() {
               </div>
             </div>
           </div>
-          <div class="course-grid" id="all-courses-grid">${courses.map(courseCard).join('')}</div>
+          <div class="course-grid" id="all-courses-grid">${displayMode === 'task_list' ? courses.map(courseTaskItem).join('') : courses.map(courseCard).join('')}</div>
         </section>
 
         <!-- FAQ Section -->
@@ -468,6 +577,14 @@ export async function renderPortal() {
     </div>
   `;
 
+  /* ===== Apply template CSS class ===== */
+  const portalMain = document.querySelector('.portal-main');
+  if (portalMain) {
+    portalMain.classList.remove('portal-classic', 'portal-modern', 'portal-minimal');
+    const templateMap = { '经典布局': 'portal-classic', '现代卡片': 'portal-modern', '简约列表': 'portal-minimal' };
+    portalMain.classList.add(templateMap[siteTemplate] || 'portal-classic');
+  }
+
   /* ===== Initialize Carousel ===== */
   window._heroIndex = 0;
   clearInterval(window._heroInterval);
@@ -547,56 +664,304 @@ export async function renderPortal() {
     }
   };
 
-  /* ===== Course Enroll ===== */
-  window.handlePortalEnroll = (courseId, price) => {
+  /* ===== Course Enroll (with registration form + payment) ===== */
+  window.handlePortalEnroll = async (courseId, price, classId) => {
     const user = window.getCurrentUser();
     if (!user) {
       window.showLoginModal();
       return;
     }
-    if (price > 0) {
-      window.showModal({
-        title: '确认报名',
-        width: '420px',
-        content: `
-          <p style="margin-bottom:16px">您即将报名此课程</p>
-          <div class="form-group">
-            <label class="form-label">报名方式</label>
-            <div style="display:flex;gap:12px">
-              <label class="radio-label"><input type="radio" name="enroll-type" value="personal" checked> 个人报名</label>
-              <label class="radio-label"><input type="radio" name="enroll-type" value="group"> 集体报名</label>
+
+    // Find course info
+    const course = courses.find(c => c.id === courseId) || {};
+    const courseTitle = course.title || '课程';
+
+    // Fetch registration fields
+    let regFields = [];
+    try { regFields = await api.getRegistrationFields(); } catch(e) {}
+    if (!regFields || !regFields.length) {
+      regFields = [
+        { field_name:'realname', display_name:'姓名', field_type:'text', is_visible:1, is_required:1, sort_order:0 },
+        { field_name:'phone', display_name:'手机号', field_type:'text', is_visible:1, is_required:1, sort_order:1 },
+        { field_name:'id_card', display_name:'身份证号', field_type:'text', is_visible:1, is_required:1, sort_order:2 },
+        { field_name:'org_name', display_name:'工作单位', field_type:'text', is_visible:1, is_required:0, sort_order:3 },
+        { field_name:'email', display_name:'邮箱', field_type:'text', is_visible:1, is_required:0, sort_order:4 },
+      ];
+    }
+    const visibleFields = regFields.filter(f => f.is_visible && f.is_visible !== 0).sort((a,b) => a.sort_order - b.sort_order);
+
+    // Build form fields HTML
+    function renderRegField(f) {
+      const val = user[f.field_name] || '';
+      let input = '';
+      if (f.field_type === 'textarea') {
+        input = `<textarea class="form-input" id="reg-field-${f.field_name}" rows="3" placeholder="请输入${f.display_name}">${window.escapeHtml(val)}</textarea>`;
+      } else if (f.field_type === 'select') {
+        let opts = '';
+        try { const parsed = JSON.parse(f.options); if (Array.isArray(parsed)) opts = parsed.map(o => `<option value="${window.escapeHtml(o)}">${window.escapeHtml(o)}</option>`).join(''); } catch(e) {}
+        input = `<select class="form-select" id="reg-field-${f.field_name}"><option value="">请选择${f.display_name}</option>${opts}</select>`;
+      } else if (f.field_type === 'date') {
+        input = `<input class="form-input" type="date" id="reg-field-${f.field_name}" value="${val}">`;
+      } else {
+        input = `<input class="form-input" id="reg-field-${f.field_name}" value="${window.escapeHtml(val)}" placeholder="请输入${f.display_name}">`;
+      }
+      const required = f.is_required ? '<span style="color:var(--color-error)">*</span>' : '';
+      return `<div class="form-group">
+        <label class="form-label">${f.display_name} ${required}</label>
+        ${input}
+        ${f.remark ? `<span class="form-help">${window.escapeHtml(f.remark)}</span>` : ''}
+      </div>`;
+    }
+
+    // Count amount properly
+    const actualPrice = price || 0;
+
+    // Step 1: Registration form modal
+    window.showModal({
+      title: classId ? '班级报名 - 填写信息' : '课程报名 - 填写信息',
+      width: '540px',
+      content: `
+        <div class="enroll-form-container">
+          <div class="enroll-course-info">
+            <div class="enroll-course-icon">${classId ? '🏫' : '📚'}</div>
+            <div class="enroll-course-detail">
+              <div class="enroll-course-name">${window.escapeHtml(classId ? (allClasses.find(c=>c.id===classId)||{}).name || '班级' : courseTitle)}</div>
+              <div class="enroll-course-price">${actualPrice > 0 ? window.formatMoney(actualPrice) : '免费'}</div>
             </div>
           </div>
-          <div id="group-enroll-fields" style="display:none">
-            <div class="form-group"><label class="form-label">单位名称</label><input class="form-input" id="enroll-org" placeholder="请输入单位名称"></div>
-            <div class="form-group"><label class="form-label">报名人数</label><input class="form-input" type="number" id="enroll-count" placeholder="请输入人数" min="1"></div>
+          <div class="enroll-divider"></div>
+          <p class="text-sm text-muted" style="margin-bottom:12px">💡 请仔细核对并填写以下报名信息</p>
+          <div class="enroll-fields">
+            ${visibleFields.map(renderRegField).join('')}
           </div>
-          <p style="color:var(--color-accent);font-weight:600">课程费用：${window.formatMoney(price)}</p>
-        `,
-        confirmText: '确认报名并支付',
-        onConfirm: async () => {
-          try {
-            await api.createOrder({ user_id: user.id, course_id: courseId, amount: price, pay_method: 'wechat' });
-            window.showToast('报名成功！请前往学习中心开始学习', 'success');
-          } catch(e) {
-            window.showToast('报名失败：' + (e.message || '请稍后重试'), 'error');
+          <div class="enroll-fields">
+            <div class="form-group">
+              <label class="form-label">报名方式</label>
+              <div style="display:flex;gap:12px">
+                <label class="radio-label"><input type="radio" name="enroll-type" value="personal" checked> 个人报名</label>
+                <label class="radio-label"><input type="radio" name="enroll-type" value="group"> 集体报名</label>
+              </div>
+            </div>
+            <div id="group-enroll-fields" style="display:none">
+              <div class="form-group"><label class="form-label">单位名称 <span style="color:var(--color-error)">*</span></label><input class="form-input" id="enroll-org" placeholder="请输入单位全称"></div>
+              <div class="form-group"><label class="form-label">报名人数</label><input class="form-input" type="number" id="enroll-count" placeholder="请输入人数" min="1" value="1"></div>
+            </div>
+          </div>
+          ${actualPrice > 0 ? `<div class="enroll-total"><span>应付金额</span><span class="enroll-total-price">${window.formatMoney(actualPrice)}</span></div>` : ''}
+          <div class="enroll-form-actions">
+            <button class="btn btn-outline" onclick="window.closeModal()">取消</button>
+            <button class="btn btn-primary" id="btn-submit-enroll" style="flex:1">
+              ${actualPrice > 0 ? '✅ 确认信息，去支付 →' : '✅ 确认报名'}
+            </button>
+          </div>
+        </div>
+      `,
+      confirmText: '',
+      cancelText: '',
+      afterRender: () => {
+        // Hide footer - use custom buttons
+        document.getElementById('modal-cancel').style.display = 'none';
+        document.getElementById('modal-confirm').style.display = 'none';
+
+        // Bind submit button
+        document.getElementById('btn-submit-enroll').onclick = async () => {
+          // Validate required fields
+          for (const f of visibleFields) {
+            if (f.is_required) {
+              const el = document.getElementById('reg-field-' + f.field_name);
+              if (!el || !el.value.trim()) {
+                window.showToast('请填写' + f.display_name, 'warning');
+                return;
+              }
+            }
           }
-        }
-      });
-      // Toggle group fields
-      setTimeout(() => {
+
+          // Collect registration data
+          const regData = {};
+          visibleFields.forEach(f => {
+            const el = document.getElementById('reg-field-' + f.field_name);
+            if (el) regData[f.field_name] = el.value.trim();
+          });
+
+          // Check group enrollment
+          const groupRadio = document.querySelector('input[name="enroll-type"][value="group"]');
+          const isGroup = groupRadio && groupRadio.checked;
+          if (isGroup) {
+            const orgEl = document.getElementById('enroll-org');
+            if (!orgEl || !orgEl.value.trim()) {
+              window.showToast('请填写单位名称', 'warning');
+              return;
+            }
+            regData._group_org = orgEl.value.trim();
+            regData._group_count = document.getElementById('enroll-count')?.value || '1';
+          }
+
+          if (actualPrice > 0) {
+            // Close enrollment modal, then show payment modal
+            window.closeModal();
+            setTimeout(() => showPaymentModal(courseId, actualPrice, regData, courseTitle, classId, isGroup), 200);
+          } else {
+            // Free course — create order directly
+            try {
+              if (classId) {
+                await api.classEnroll({ user_id: user.id, class_id: classId, amount: 0, pay_method: 'free', registration_data: regData });
+              } else {
+                await api.createOrder({ user_id: user.id, course_id: courseId, amount: 0, pay_method: 'free', registration_data: regData });
+              }
+              window.closeModal();
+              window.showToast('🎉 报名成功！请前往学习中心开始学习', 'success');
+              setTimeout(() => {
+                try { renderPortal(); } catch(e) {}
+              }, 1500);
+            } catch(e) {
+              window.showToast('报名失败：' + (e.message || '请稍后重试'), 'error');
+            }
+          }
+        };
+
+        // Toggle group fields
         const radios = document.querySelectorAll('input[name="enroll-type"]');
         radios.forEach(r => r.addEventListener('change', () => {
           const groupFields = document.getElementById('group-enroll-fields');
           if (groupFields) groupFields.style.display = r.value === 'group' && r.checked ? 'block' : 'none';
         }));
-      }, 100);
-    } else {
-      api.createOrder({ user_id: user.id, course_id: courseId, amount: 0, pay_method: 'free' })
-        .then(() => window.showToast('报名成功！请前往学习中心开始学习', 'success'))
-        .catch(e => window.showToast('报名失败：' + (e.message || '请稍后重试'), 'error'));
-    }
+      }
+    });
   };
+
+  /* ===== Payment Modal ===== */
+  function showPaymentModal(courseId, amount, regData, courseTitle, classId, isGroup) {
+    const user = window.getCurrentUser();
+    let selectedMethod = 'wechat';
+    let paymentTimer = null;
+    let countdown = 120; // 2 minute countdown for demo
+
+    function updateQRDisplay() {
+      const qrArea = document.getElementById('payment-qr-area');
+      if (!qrArea) return;
+      if (selectedMethod === 'wechat') {
+        qrArea.innerHTML = `
+          <div class="payment-qr-img">💚</div>
+          <div class="payment-qr-label">微信支付</div>
+          <div class="payment-qr-tip">请使用微信扫描二维码完成支付</div>
+          <div class="payment-qr-amount">${window.formatMoney(amount)}</div>
+        `;
+      } else {
+        qrArea.innerHTML = `
+          <div class="payment-qr-img" style="color:#1677FF">💙</div>
+          <div class="payment-qr-label">支付宝</div>
+          <div class="payment-qr-tip">请使用支付宝扫描二维码完成支付</div>
+          <div class="payment-qr-amount">${window.formatMoney(amount)}</div>
+        `;
+      }
+    }
+
+    window.showModal({
+      title: '确认支付',
+      width: '480px',
+      content: `
+        <div class="payment-container">
+          <div class="payment-header">
+            <div class="payment-course-name">${window.escapeHtml(courseTitle)}</div>
+            <div class="payment-amount-label">支付金额</div>
+            <div class="payment-amount">${window.formatMoney(amount)}</div>
+          </div>
+          <div class="payment-methods">
+            <div class="payment-method ${selectedMethod==='wechat'?'active':''}" id="pay-method-wechat" onclick="window.selectPayMethod('wechat')">
+              <span class="payment-method-icon" style="color:#07C160">💚</span>
+              <span>微信支付</span>
+            </div>
+            <div class="payment-method ${selectedMethod==='alipay'?'active':''}" id="pay-method-alipay" onclick="window.selectPayMethod('alipay')">
+              <span class="payment-method-icon" style="color:#1677FF">💙</span>
+              <span>支付宝</span>
+            </div>
+          </div>
+          <div class="payment-qr-area" id="payment-qr-area">
+            <div class="payment-qr-img">💚</div>
+            <div class="payment-qr-label">微信支付</div>
+            <div class="payment-qr-tip">请使用微信扫描二维码完成支付</div>
+            <div class="payment-qr-amount">${window.formatMoney(amount)}</div>
+          </div>
+          <div class="payment-countdown" id="payment-countdown">⏱ 请在 ${countdown} 秒内完成支付</div>
+          <div class="payment-actions">
+            <button class="btn btn-primary" style="width:100%" id="btn-confirm-payment" onclick="window.confirmPayment(${courseId},${amount},${classId||0},${isGroup||false})">
+              💰 确认支付 ${window.formatMoney(amount)}
+            </button>
+            <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="window.simulatePaymentCancel()">
+              取消支付
+            </button>
+          </div>
+        </div>
+      `,
+      confirmText: '关闭',
+      cancelText: '',
+      afterRender: () => {
+        // Hide footer buttons - we use custom buttons in content
+        document.getElementById('modal-cancel').style.display = 'none';
+        document.getElementById('modal-confirm').textContent = '关闭窗口';
+        // Start countdown
+        paymentTimer = setInterval(() => {
+          countdown--;
+          const cd = document.getElementById('payment-countdown');
+          if (cd) {
+            cd.textContent = '⏱ 请在 ' + countdown + ' 秒内完成支付';
+            if (countdown <= 30) cd.style.color = 'var(--color-error)';
+          }
+          if (countdown <= 0) {
+            clearInterval(paymentTimer);
+            window.showToast('支付超时，请重新操作', 'warning');
+            window.closeModal();
+          }
+        }, 1000);
+      }
+    });
+
+    // Store current registration data for payment confirmation
+    window._pendingPayment = { courseId, amount, regData, courseTitle, classId, isGroup, user };
+
+    window.selectPayMethod = (method) => {
+      selectedMethod = method;
+      document.querySelectorAll('.payment-method').forEach(el => el.classList.remove('active'));
+      document.getElementById('pay-method-' + method)?.classList.add('active');
+      updateQRDisplay();
+    };
+
+    window.simulatePaymentCancel = () => {
+      if (paymentTimer) clearInterval(paymentTimer);
+      window.closeModal();
+      window.showToast('已取消支付', 'info');
+    };
+
+    window.confirmPayment = async (cid, amt, clId, isGrp) => {
+      if (paymentTimer) clearInterval(paymentTimer);
+      const data = window._pendingPayment;
+      if (!data) {
+        window.showToast('支付信息已过期，请重新操作', 'warning');
+        return;
+      }
+      try {
+        if (clId) {
+          await api.classEnroll({
+            user_id: data.user.id, class_id: clId, amount: amt,
+            pay_method: selectedMethod, registration_data: data.regData
+          });
+        } else {
+          await api.createOrder({
+            user_id: data.user.id, course_id: cid, amount: amt,
+            pay_method: selectedMethod, registration_data: data.regData
+          });
+        }
+        window._pendingPayment = null;
+        window.closeModal();
+        window.showToast('🎉 支付成功！请前往学习中心开始学习', 'success');
+        setTimeout(() => {
+          try { renderPortal(); } catch(e) {}
+        }, 1500);
+      } catch(e) {
+        window.showToast('支付失败：' + (e.message || '请稍后重试'), 'error');
+      }
+    };
+  }
 
   /* ===== View Course Detail ===== */
   window.portalViewCourse = (id) => {
@@ -665,24 +1030,9 @@ export async function renderPortal() {
         try { allClasses = await api.getClasses() || []; } catch(e) {}
       }
       const activeClasses = allClasses.filter(cls => cls.status === 'active');
-      let html = '';
-      if (activeClasses.length > 0) {
-        html = activeClasses.map(cls => {
-          const clsCourses = (cls.courses || []).filter(c => c && c.id);
-          if (!clsCourses.length) return '';
-          return '<div style="margin-bottom:36px">' +
-            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--color-primary)">' +
-              '<span style="font-size:1.5rem">🏫</span>' +
-              '<h3 style="margin:0;font-size:1.15rem;color:var(--color-primary)">' + window.escapeHtml(cls.name) + '</h3>' +
-              '<span class="badge badge-sm">' + (cls.start_date || '') + ' ~ ' + (cls.end_date || '') + '</span>' +
-              '<span class="badge badge-sm badge-info">' + (cls.student_ids || []).length + ' 名学员</span>' +
-            '</div>' +
-            '<div class="course-grid">' + clsCourses.map(courseCard).join('') + '</div>' +
-          '</div>';
-        }).join('');
-      } else {
-        html = '<div class="empty-state"><div class="empty-icon">🏫</div><h4>暂无活跃班级</h4><p>请联系管理员创建培训班级</p></div>';
-      }
+      const html = activeClasses.length > 0
+        ? activeClasses.map(cls => renderClassCard(cls)).join('')
+        : '<div class="empty-state"><div class="empty-icon">🏫</div><h4>暂无活跃班级</h4><p>请联系管理员创建培训班级</p></div>';
       if (allSection) {
         const filterBar = allSection.querySelector('.course-filter-bar');
         allSection.innerHTML = (filterBar ? filterBar.outerHTML : '') + html;
@@ -705,7 +1055,9 @@ export async function renderPortal() {
       const grid = document.getElementById('all-courses-grid');
       if (grid) {
         if (filtered && filtered.length) {
-          grid.innerHTML = filtered.map(courseCard).join('');
+          grid.innerHTML = displayMode === 'task_list'
+            ? filtered.map(courseTaskItem).join('')
+            : filtered.map(courseCard).join('');
         } else {
           grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:48px"><div style="font-size:3rem;margin-bottom:12px">🔍</div><h4>未找到匹配课程</h4><p>请尝试调整筛选条件</p></div>';
         }
