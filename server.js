@@ -1096,12 +1096,6 @@ app.get('*', (req, res) => {
 });
 
 // ===== Start =====
-app.listen(PORT, () => {
-  console.log('\n=================================');
-  console.log(' 扬州职业培训平台已启动');
-  console.log(' 地址: http://localhost:' + PORT);
-  console.log(' 测试账号: admin/admin123');
-  console.log('           teacher/teacher123');
-  console.log('           student/student123');
-  console.log('=================================\n');
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[startup] port=${PORT} pid=${process.pid}`);
 });

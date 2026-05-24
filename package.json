@@ -4,9 +4,12 @@
   "description": "扬州职业软件功能需求 Demo - 专业技术人员继续教育在线培训平台",
   "main": "server.js",
   "bin": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server.js",
-    "build": "pkg . --targets node18-win-x64 --output dist/server.exe"
+    "build:win": "pkg . --targets node18-win-x64 --output dist/server.exe"
   },
   "pkg": {
     "targets": [
