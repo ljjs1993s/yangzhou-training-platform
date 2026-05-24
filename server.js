@@ -2,9 +2,27 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+
+// Cloud deploy crash logging
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason);
+});
+
 const store = require('./database/store');
 
-store.loadData();
+try {
+  store.loadData();
+  console.error('[startup] data loaded OK');
+} catch(e) {
+  console.error('[FATAL] loadData failed:', e.message);
+  console.error(e.stack);
+  process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
