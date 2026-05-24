@@ -1,4 +1,47 @@
-# 🚀 方案 B：Sealos 云部署指南 — 扬州培训平台
+# 🚀 扬州培训平台 — 云部署指南
+
+> GitHub 仓库：https://github.com/ljjs1993s/yangzhou-training-platform
+
+提供两种方案，推荐方案 A（Render，最简）：
+
+| 方案 | 平台 | 难度 | 免费额度 | 域名 |
+|------|------|------|----------|------|
+| **A (推荐)** | Render | ⭐ 极简 | 750h/月 | `xxx.onrender.com` |
+| B | Sealos | ⭐⭐ 简单 | ¥5 试用 | `xxx.sealos.run` |
+
+---
+
+# 方案 A：Render 一键部署（推荐）
+
+## 第一步：Fork 项目到 Render
+
+1. 浏览器打开 **https://render.com**
+2. 点击 **「Get Started」** → 用 GitHub 账号登录
+3. 登录后点击 **「New +」** → **「Web Service」**
+4. 授权并选择仓库 `ljjs1993s/yangzhou-training-platform`
+5. Render 自动检测到 Node.js 项目
+
+## 第二步：配置
+
+| 参数 | 值 |
+|------|-----|
+| Name | `yz-training`（任意） |
+| Runtime | Node |
+| Build Command | `npm install` |
+| Start Command | `node server.js` |
+| Instance Type | **Free** |
+
+## 第三步：部署
+
+点击 **「Create Web Service」**，等待 2-3 分钟自动构建部署。
+
+部署完成后你会获得 `https://yz-training.onrender.com` 地址，直接访问即可。
+
+> ⚠️ Free 实例 15 分钟无访问会自动休眠，下次访问需要 30-60 秒冷启动。
+
+---
+
+# 方案 B：Sealos 云部署指南
 
 ## 你将获得
 
@@ -129,12 +172,12 @@ bash deploy-in-devbox.sh
 
 ---
 
-## 🎉 双保险就绪
+## 🎉 部署就绪
 
-| 方案 | 类型 | 地址 |
+| 方案 | 类型 | 说明 |
 |------|------|------|
-| ✅ 方案 A | localhost.run 隧道 | `https://891d0a37ee2669.lhr.life` |
-| ✅ 方案 B | Sealos 云部署 | `https://xxx.sealos.run`（按本指南） |
+| ✅ 方案 A | Render.com | 一键 GitHub 部署，极简 |
+| ✅ 方案 B | Sealos | 国内云，数据持久化更强 |
 
 ---
 
