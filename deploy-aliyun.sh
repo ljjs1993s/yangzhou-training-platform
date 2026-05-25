@@ -9,32 +9,56 @@ echo "========================================="
 echo " 扬州培训平台 一键部署脚本"
 echo "========================================="
 
-# 1. 安装 Node.js 20 (如果还没装)
+# 检测系统类型
+if [ -f /etc/redhat-release ] || grep -qi 'centos\|alibaba\|rhel\|fedora' /etc/os-release 2>/dev/null; then
+  OS_TYPE="rhel"
+  PKG_MGR="yum"
+else
+  OS_TYPE="debian"
+  PKG_MGR="apt-get"
+fi
+echo "[0/5] 检测系统: $OS_TYPE, 包管理器: $PKG_MGR"
+
+# 1. 安装 Node.js 20
 if ! command -v node &>/dev/null; then
   echo "[1/5] 安装 Node.js 20 ..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt-get install -y nodejs
+  if [ "$OS_TYPE" = "rhel" ]; then
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+    yum install -y nodejs
+  else
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  fi
 else
   echo "[1/5] Node.js 已安装: $(node -v)"
 fi
 
-# 2. 安装 PM2 (进程守护)
+# 2. 安装 git（CentOS 最小化安装可能没有）
+if ! command -v git &>/dev/null; then
+  echo "[1.5/5] 安装 git ..."
+  if [ "$OS_TYPE" = "rhel" ]; then
+    yum install -y git
+  else
+    sudo apt-get install -y git
+  fi
+fi
+
+# 3. 安装 PM2 (进程守护)
 if ! command -v pm2 &>/dev/null; then
   echo "[2/5] 安装 PM2 ..."
-  sudo npm install -g pm2
+  npm install -g pm2
 else
   echo "[2/5] PM2 已安装"
 fi
 
-# 3. 克隆项目
+# 4. 克隆项目
 APP_DIR=/opt/yz-training
 if [ -d "$APP_DIR" ]; then
   echo "[3/5] 项目目录已存在，拉取最新代码..."
   cd $APP_DIR && git pull origin main
 else
   echo "[3/5] 克隆项目..."
-  sudo git clone https://github.com/ljjs1993s/yangzhou-training-platform.git $APP_DIR
-  sudo chown -R $USER:$USER $APP_DIR
+  git clone https://github.com/ljjs1993s/yangzhou-training-platform.git $APP_DIR
 fi
 
 # 4. 安装依赖
